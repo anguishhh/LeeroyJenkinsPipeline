@@ -1,0 +1,8 @@
+# Alle Textdateien mit Unix-Zeilenenden (LF) speichern und auschecken.
+# Wichtig, weil unter Windows entwickelt wird: Ein Bash-Skript mit Windows-
+# Zeilenenden (CRLF) bricht im Container mit "$'\r': command not found" ab.
+* text=auto eol=lf
+
+*.docx binary
+*.png  binary
+*.jpg  binary
