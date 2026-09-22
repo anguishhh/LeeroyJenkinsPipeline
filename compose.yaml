@@ -1,0 +1,54 @@
+# NetWatch – Anwendung und Datenbank als getrennte Container
+#
+# Zugangsdaten kommen aus Umgebungsvariablen: lokal aus der Datei .env (nicht im
+# Repository, Vorlage: .env.example), in der Pipeline aus den Jenkins-Credentials.
+# Fehlt ein Pflichtwert, bricht Compose mit einer Fehlermeldung ab (":?").
+#
+#   docker compose up -d --build        starten (bzw. neu bauen)
+#   docker compose logs -f netwatch     Prüfergebnisse live ansehen
+#   docker compose down                 stoppen – die Daten im Volume bleiben erhalten
+name: netwatch
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-netwatch}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER ist nicht gesetzt}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD ist nicht gesetzt}
+      TZ: Europe/Berlin
+    volumes:
+      # Benanntes Volume: Daten überleben Neustart, Update und "docker compose down"
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - backend
+    # Kein "ports:" – die Datenbank ist bewusst nur im internen Docker-Netz erreichbar.
+
+  netwatch:
+    image: netwatch:${NETWATCH_TAG:-latest}
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGDATABASE: ${POSTGRES_DB:-netwatch}
+      PGUSER: ${POSTGRES_USER:?POSTGRES_USER ist nicht gesetzt}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD ist nicht gesetzt}
+      NETWATCH_INTERVAL: ${NETWATCH_INTERVAL:-60}
+      NETWATCH_HOSTS_FILE: ${NETWATCH_HOSTS_FILE:-/app/config/hosts.conf}
+    networks:
+      - backend
+
+volumes:
+  pgdata:
+
+networks:
+  backend:

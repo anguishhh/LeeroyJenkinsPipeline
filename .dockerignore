@@ -1,0 +1,14 @@
+# Ins Image kommen nur bin/, sql/ und config/ (siehe Dockerfile).
+# Alles andere bleibt aus dem Build-Kontext draußen – vor allem .env mit
+# Zugangsdaten und das .git-Verzeichnis.
+.git
+.env
+*.env
+secrets/
+docs/
+tests/
+test-results/
+*.md
+*.docx
+Jenkinsfile
+compose.yaml
