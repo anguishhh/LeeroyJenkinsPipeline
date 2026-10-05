@@ -22,8 +22,26 @@ Netzwerkgeräte im Minutentakt per Ping prüft und die Ergebnisse dauerhaft in e
 speichert. Nach jedem Commit auf GitHub soll NetWatch automatisch getestet und – nur bei
 fehlerfreiem Durchlauf – als Docker-Container bereitgestellt werden.
 
-Der Prototyp ist vollständig umgesetzt und im Betrieb. Alle in Abschnitt 9 aufgeführten
+Der Prototyp ist vollständig umgesetzt und im Betrieb. Alle in Abschnitt 11 aufgeführten
 Testfälle wurden durchgeführt und bestanden.
+
+### Projektziele
+
+Aus der Ausgangslage ergeben sich sechs Ziele. Jedes ist so formuliert, dass überprüfbar ist,
+ob es erreicht wurde:
+
+| # | Ziel | Woran wir es messen | Erreicht |
+|---|---|---|---|
+| 1 | Jede Codeänderung wird automatisch getestet, ohne dass jemand daran denken muss | Ein Push löst ohne weiteres Zutun einen Testlauf aus | ✓ Testfall P1: Push 12:19, Build 12:22, von der Pipeline selbst gestartet |
+| 2 | Fehlerhafte Versionen erreichen kein Testsystem | Ein absichtlich eingebauter Fehler führt zum Abbruch vor der Bereitstellung | ✓ Testfälle P2 und P3: Abbruch nach 8,6 bzw. 1 Sekunde, kein Deployment |
+| 3 | Auf dem Zielsystem läuft ein eindeutig bestimmbarer Softwarestand | Jede Version trägt die Buildnummer und den Commit-Hash | ✓ Image `netwatch:<Buildnummer>`, Version im Protokoll beim Start |
+| 4 | Die Bereitstellung erfolgt ohne Handarbeit auf dem Server | Nach bestandenen Tests läuft die neue Version ohne manuellen Eingriff | ✓ Stage *Deploy*, nachgewiesen in den Builds #3 und #6 |
+| 5 | Monitoring-Daten gehen nicht verloren | Daten überstehen Container- und Systemneustarts | ✓ Testfälle I10, B2 und B4: 462 → 477 Messungen über den VM-Neustart hinweg |
+| 6 | Zugangsdaten sind nirgends im Quellcode | Volltextsuche im Repository findet keine echten Passwörter | ✓ Testfall B5; das Produktivpasswort liegt nur im Credential-Speicher von Jenkins |
+
+Nicht Ziel des Projekts sind ein Produktivbetrieb mit mehreren Servern, Hochverfügbarkeit oder
+eine grafische Oberfläche. Es handelt sich ausdrücklich um einen Prototyp, der den Ablauf
+vollständig und nachvollziehbar zeigt.
 
 ---
 
@@ -57,7 +75,37 @@ Schritt war für sich prüfbar, bevor der nächste begann:
 | Deployment nur nach erfolgreichem Test | Stage *Deploy* wird nur bei grünen Vorstufen erreicht |
 | Keine Zugangsdaten im Quellcode oder Jenkinsfile | Jenkins-Credential, Umgebungsvariablen, `.gitignore` |
 
-### 2.3 Begründete Entscheidungen
+### 2.3 Netzplanung: lokales Netz, Internet und GitHub
+
+Die Umgebung besteht aus vier Zonen. Geplant wurde so, dass aus dem öffentlichen Netz **keine**
+Verbindung in die Umgebung hinein möglich ist; nach außen geht nur, was gebraucht wird.
+
+| Verbindung | Richtung | Protokoll / Port | Zweck |
+|---|---|---|---|
+| Windows-PC → VM | eingehend, nur Host-only-Netz | SSH 22/tcp, HTTP 8080/tcp | Administration und Jenkins-Oberfläche |
+| VM → GitHub | ausgehend ins öffentliche Netz | HTTPS 443/tcp | Abfrage auf neue Commits, Klonen des Repositorys |
+| VM → Docker Hub, Debian- und Jenkins-Paketquellen | ausgehend ins öffentliche Netz | HTTPS 443/tcp, HTTP 80/tcp | Basis-Images, Pakete, Updates |
+| Container `netwatch` → überwachte Systeme | ausgehend, lokal und öffentlich | ICMP | die eigentliche Erreichbarkeitsprüfung |
+| Container `netwatch` → Container `db` | nur innerhalb des Docker-Netzes | PostgreSQL 5432/tcp | Speichern der Ergebnisse |
+| Öffentliches Netz → VM | **nicht möglich** | – | die VM hat keine öffentliche Adresse und keine Portweiterleitung |
+
+Daraus ergeben sich drei Planungsentscheidungen:
+
+- **Zwei Netzwerkkarten mit getrennten Aufgaben.** Der NAT-Adapter stellt den Internetzugang
+  bereit, der Host-only-Adapter die Verwaltung. Dadurch ist die Verwaltung auch dann erreichbar,
+  wenn das Internet ausfällt, und sie ist vom öffentlichen Netz getrennt.
+- **GitHub als einziger Berührungspunkt mit dem öffentlichen Netz im Projektablauf.** Der
+  Quellcode liegt öffentlich auf GitHub, die Verbindung dorthin baut aber immer die VM auf.
+  Genau deshalb fällt die Wahl auf Polling: Ein Webhook würde eine Verbindung von außen
+  erfordern, die in dieser Netzumgebung weder möglich noch erwünscht ist.
+- **Datenbank ohne Netzzugang von außen.** Sie veröffentlicht keinen Port auf der VM, ist also
+  selbst aus dem Host-only-Netz nicht erreichbar.
+
+Weil das Repository öffentlich ist, gilt für den Quellcode: Alles darin ist für jeden lesbar.
+Zugangsdaten dürfen deshalb unter keinen Umständen hineingeraten – die Maßnahmen dazu stehen in
+den Abschnitten 6.4 und 8.4.
+
+### 2.4 Begründete Entscheidungen
 
 **Jenkins direkt auf der VM statt als Container.** Die Pipeline startet selbst Container
 (`docker build`, `docker compose`). Läuft Jenkins direkt auf dem System, nutzt es dafür
@@ -230,7 +278,7 @@ iface enp0s8 inet static
 | `jenkins` | Dienstkonto, automatisch angelegt | führt die Pipeline aus, Mitglied von `docker` |
 | `netwatch` | Dienstkonto im Container | führt das Monitoring-Skript ohne Root-Rechte aus |
 | `postgres` | Dienstkonto im Datenbank-Container | Datenbankserver |
-| `root` | Systemkonto | **[TODO: Anmeldung gesperrt oder Passwort vergeben? bitte eintragen]** |
+| `root` | Systemkonto | Anmeldung gesperrt (`passwd -S root` meldet `L`); Verwaltung ausschließlich über `sudo` |
 
 Die Mitgliedschaft in der Gruppe `docker` erlaubt den Zugriff auf den Docker-Socket und
 entspricht damit faktisch Root-Rechten auf der VM. Für `jenkins` ist das unvermeidbar, weil
@@ -241,7 +289,27 @@ isolierten VM ist das Risiko vertretbar und bewusst in Kauf genommen.
 Im Container läuft die Anwendung dagegen als unprivilegierter Benutzer `netwatch`. Ping
 funktioniert trotzdem, weil Docker unprivilegierte ICMP-Sockets standardmäßig erlaubt.
 
-### 5.4 Installierte Dienste
+### 5.4 Installierte Pakete
+
+Installiert wurde nur, was für den Auftrag gebraucht wird:
+
+| Paket | Version | Wofür |
+|---|---|---|
+| `openssh-server` | Debian 13 | Fernwartung der VM |
+| `git` | 2.47.3 | Versionsverwaltung, Quelle der Pipeline |
+| `curl`, `ca-certificates` | Debian 13 | Herunterladen und Prüfen der Paketquellen-Schlüssel |
+| `ufw` | Debian 13 | Firewall |
+| `unattended-upgrades` | Debian 13 | automatische Sicherheitsupdates |
+| `docker-ce`, `docker-ce-cli`, `containerd.io` | 29.8.2 / 2.3.6 | Container-Laufzeit |
+| `docker-buildx-plugin`, `docker-compose-plugin` | 0.37.1 / 5.6.0 | Images bauen, Dienste gemeinsam starten |
+| `fontconfig`, `openjdk-21-jre` | 21.0.12 | Laufzeitumgebung für Jenkins |
+| `jenkins` | 2.580.1 (LTS) | Automatisierungsserver |
+
+Docker und Jenkins stammen aus den offiziellen Herstellerquellen, die mit eigenem
+Signaturschlüssel eingebunden wurden. Das ist aktueller als die Debian-Pakete und war bei
+Jenkins auch nötig, weil die Distribution keine aktuelle LTS-Fassung mitbringt.
+
+### 5.5 Installierte Dienste
 
 | Dienst | Port | Erreichbar von |
 |---|---|---|
@@ -251,14 +319,16 @@ funktioniert trotzdem, weil Docker unprivilegierte ICMP-Sockets standardmäßig 
 | Container `db` (PostgreSQL) | 5432/tcp | nur im internen Docker-Netz |
 | Container `netwatch` | – | keine eingehenden Verbindungen |
 
-### 5.5 Absicherung
+### 5.6 Absicherung
 
 - **Firewall (ufw):** Standardregel „alles eingehende verbieten, alles ausgehende erlauben“.
   Freigegeben sind nur SSH und Jenkins, und zwar ausschließlich aus dem Host-only-Netz.
 - **Keine veröffentlichten Container-Ports:** Von Docker veröffentlichte Ports umgehen ufw.
   Deshalb veröffentlicht die Datenbank keinen Port; sie ist nur containerintern erreichbar.
-- **SSH mit Schlüssel:** Die Anmeldung erfolgt mit einem ed25519-Schlüsselpaar, das auf dem
-  Windows-PC erzeugt wurde. **[TODO: Wurde `PasswordAuthentication no` gesetzt? bitte eintragen]**
+- **SSH nur mit Schlüssel:** Die Anmeldung erfolgt mit einem ed25519-Schlüsselpaar, das auf dem
+  Windows-PC erzeugt wurde. Der private Schlüssel verlässt den PC nicht, auf der VM liegt nur
+  der öffentliche Teil. Die Passwort-Anmeldung ist abgeschaltet (`PasswordAuthentication no`),
+  ebenso die Anmeldung als `root`. Damit laufen Angriffe mit geratenen Passwörtern ins Leere.
 - **Automatische Sicherheitsupdates** über `unattended-upgrades`.
 - **Minimale Installation** ohne Desktop und ohne nicht benötigte Dienste.
 
@@ -696,13 +766,15 @@ bestandenen Tests erfolgt.
 
 ## 14. Übersicht der Nachweise
 
-| Nachweis | Bezug zur Bewertung |
+| Bewertungskriterium | Wo es in dieser Dokumentation steht |
 |---|---|
-| Architektur- und Ablaufbeschreibung (Abschnitte 3 und 4) | Teil 1 |
-| `ufw status`, Netz- und Benutzertabellen (Abschnitt 5) | Teil 2 |
-| Repository-Struktur, Commit-Liste, Passwortsuche (Abschnitt 6) | Teil 3 |
-| Aufbau des Skripts, Protokoll- und Reportausgabe (Abschnitt 7) | Teil 4 |
-| Datenmodell, SQL-Abfragen, Persistenznachweise (Abschnitt 8) | Teil 5 |
-| Dockerfile, Compose-Einstellungen, `docker ps` (Abschnitt 9) | Teil 6 |
-| Jenkins-Einrichtung, Pipeline-Stages, Builds #1 bis #7 (Abschnitt 10) | Teil 7 |
-| Testtabellen U, I, P und B mit Soll und Ist (Abschnitt 11) | Teil 8 |
+| **Teil 1** – Planung der Gesamtumgebung inkl. VM, Netzwerk, GitHub, öffentliches Netz | Abschnitt 2: Vorgehen (2.1), Anforderungen (2.2), Netzplanung mit allen Verbindungen und dem öffentlichen Netz (2.3); VM-Daten in 5.1 |
+| **Teil 1** – Nachvollziehbare Darstellung der Projektziele | Abschnitt 1: sechs Ziele mit Messkriterium und Nachweis, dazu die ausdrückliche Abgrenzung, was nicht Ziel ist |
+| **Teil 1** – Zusammenspiel von GitHub, Jenkins, Docker, NetWatch und Datenbank | Abschnitt 3 (Architekturskizze, Komponenten) und Abschnitt 4 (Ablauf nach einem Commit in neun Schritten) |
+| **Teil 2** – VM, Netzwerk, Pakete/Dienste, Absicherung | Abschnitt 5, Unterabschnitte 5.1 bis 5.6 |
+| **Teil 3** – Repository, Git-Einsatz, Commits, `.gitignore` ohne Passwörter | Abschnitt 6, Unterabschnitte 6.1 bis 6.4 |
+| **Teil 4** – Bash-Anwendung, ONLINE/OFFLINE, Ausgabe, Struktur und Kommentare | Abschnitt 7, Unterabschnitte 7.1 bis 7.3 |
+| **Teil 5** – Datenbank, Tabellenstruktur, Speicherung, Volume, Zugangsdaten | Abschnitt 8, Unterabschnitte 8.1 bis 8.4 |
+| **Teil 6** – Dockerfile, eigener Container, getrennte Datenbank, Compose | Abschnitt 9, Unterabschnitte 9.1 und 9.2 |
+| **Teil 7** – Jenkins, Checkout, Jenkinsfile, Stages, Tests, Deploy, Trigger | Abschnitt 10, Unterabschnitte 10.1 bis 10.3 |
+| **Teil 8** – Testfälle, positive und negative Tests, Ergebnisse | Abschnitt 11, Unterabschnitte 11.1 bis 11.3 |
