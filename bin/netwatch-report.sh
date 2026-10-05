@@ -28,7 +28,7 @@ SELECT hostname                                     AS "Hostname",
        ip_address                                   AS "IP-Adresse",
        to_char(checked_at, 'YYYY-MM-DD HH24:MI:SS') AS "Prüfzeitpunkt",
        status                                       AS "Status",
-       round(response_time_ms, 1) || ' ms'          AS "Antwortzeit"
+       round(response_time_ms, 2) || ' ms'          AS "Antwortzeit"
 FROM   v_latest_status
 ORDER  BY hostname;
 SQL
@@ -39,7 +39,7 @@ SELECT h.hostname                                     AS "Hostname",
        h.ip_address                                   AS "IP-Adresse",
        to_char(c.checked_at, 'YYYY-MM-DD HH24:MI:SS') AS "Prüfzeitpunkt",
        c.status                                       AS "Status",
-       round(c.response_time_ms, 1) || ' ms'          AS "Antwortzeit"
+       round(c.response_time_ms, 2) || ' ms'          AS "Antwortzeit"
 FROM   checks c
 JOIN   hosts  h USING (host_id)
 ORDER  BY c.checked_at DESC, c.check_id DESC
