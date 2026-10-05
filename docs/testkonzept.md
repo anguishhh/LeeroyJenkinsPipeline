@@ -18,22 +18,25 @@ Screenshot (Jenkins-Konsole, `psql`-Ausgabe, …) im CMS ablegen.
 
 ## Automatisierte Tests
 
+Nachweis: Konsolenausgabe von **Build #1 vom 05.10.2026** (Stages *Unit-Tests* und
+*Integrationstest*). Diese Tests laufen bei jedem Pipeline-Durchlauf erneut.
+
 | Nr. | Testfall | Art | Soll-Ergebnis | Ist-Ergebnis | OK? |
 |-----|----------|-----|---------------|--------------|-----|
-| U1 | Gültige IP-Adressen (127.0.0.1, 255.255.255.255 …) | positiv | werden akzeptiert | | |
-| U2 | Ungültige IP-Adressen (256.1.1.1, 1.2.3, abc …) | negativ | werden abgelehnt | | |
-| U3 | Antwortzeit aus ping-Ausgabe lesen | positiv | `time=0.045 ms` → `0.045` | | |
-| U4 | ping erfolgreich (simuliert) | positiv | `ONLINE 12.3` | | |
-| U5 | ping fehlgeschlagen (simuliert) | negativ | `OFFLINE` | | |
-| U6 | Hostliste mit Kommentaren, Leerzeilen, CRLF | positiv | nur gültige Einträge werden gelesen | | |
-| U7 | Hostliste mit ungültigen Einträgen / fehlende Datei | negativ | Einträge übersprungen / Fehler | | |
-| I1 | Prüfdurchlauf `--once` mit Test-Hostliste | positiv | Exit-Code 0 | | |
-| I2 | 127.0.0.1 prüfen, Ergebnis in DB | positiv | Status `ONLINE`, Antwortzeit vorhanden | | |
-| I4 | 192.0.2.1 (TEST-NET, nicht erreichbar) prüfen | negativ | Status `OFFLINE`, Antwortzeit `NULL` | | |
-| I6 | Ungültiger Eintrag 999.1.1.1 | negativ | nicht in der DB | | |
-| I8 | Falsches Datenbank-Passwort | negativ | Fehlermeldung, Exit-Code ≠ 0 | | |
-| I9 | Datenbank gestoppt | negativ | Fehlermeldung, Exit-Code ≠ 0 | | |
-| I10 | `docker compose down` (ohne `-v`) und neu starten | positiv | Daten weiterhin vorhanden | | |
+| U1 | Gültige IP-Adressen (127.0.0.1, 255.255.255.255 …) | positiv | werden akzeptiert | `ok 1` | ✓ |
+| U2 | Ungültige IP-Adressen (256.1.1.1, 1.2.3, abc …) | negativ | werden abgelehnt | `ok 2` | ✓ |
+| U3 | Antwortzeit aus ping-Ausgabe lesen | positiv | `time=0.045 ms` → `0.045` | `ok 5–7` | ✓ |
+| U4 | ping erfolgreich (simuliert) | positiv | `ONLINE 12.3` | `ok 8` | ✓ |
+| U5 | ping fehlgeschlagen (simuliert) | negativ | `OFFLINE` | `ok 9` | ✓ |
+| U6 | Hostliste mit Kommentaren, Leerzeilen, CRLF | positiv | nur gültige Einträge werden gelesen | `ok 10, 12` | ✓ |
+| U7 | Hostliste mit ungültigen Einträgen / fehlende Datei | negativ | Einträge übersprungen / Fehler | `ok 11, 13` | ✓ |
+| I1 | Prüfdurchlauf `--once` mit Test-Hostliste | positiv | Exit-Code 0 | `PASS I1` | ✓ |
+| I2 | 127.0.0.1 prüfen, Ergebnis in DB | positiv | Status `ONLINE`, Antwortzeit vorhanden | `ONLINE`, 0.034 ms (`PASS I2`, `PASS I3`) | ✓ |
+| I4 | 192.0.2.1 (TEST-NET, nicht erreichbar) prüfen | negativ | Status `OFFLINE`, Antwortzeit `NULL` | `OFFLINE`, NULL (`PASS I4`, `PASS I5`) | ✓ |
+| I6 | Ungültiger Eintrag 999.1.1.1 | negativ | nicht in der DB | 0 Treffer, nur 2 Prüfungen gespeichert (`PASS I6`, `PASS I7`) | ✓ |
+| I8 | Falsches Datenbank-Passwort | negativ | Fehlermeldung, Exit-Code ≠ 0 | `password authentication failed for user "netwatch_test"` (`PASS I8`) | ✓ |
+| I9 | Datenbank gestoppt | negativ | Fehlermeldung, Exit-Code ≠ 0 | `could not translate host name "db"` (`PASS I9`) | ✓ |
+| I10 | `docker compose down` (ohne `-v`) und neu starten | positiv | Daten weiterhin vorhanden | 2 von 2 Datensätzen (`PASS I10`) | ✓ |
 
 ## Pipeline-Tests (manuell)
 
