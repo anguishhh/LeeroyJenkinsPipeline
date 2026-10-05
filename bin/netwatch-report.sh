@@ -10,6 +10,7 @@
 # Verbindungsdaten wie bei netwatch.sh über PGHOST, PGDATABASE, PGUSER, PGPASSWORD.
 
 set -euo pipefail
+echo $max_rows
 
 max_rows="${1:-20}"
 if [[ ! "$max_rows" =~ ^[1-9][0-9]*$ ]]; then
