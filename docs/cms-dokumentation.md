@@ -1,47 +1,27 @@
-# NetWatch – CI/CD-Umgebung mit GitHub, Jenkins und Docker
-
-Projektdokumentation · NetDorm Solutions GmbH (fiktiv) · Stand 05.10.2026
-Repository: <https://github.com/anguishhh/LeeroyJenkinsPipeline>
-
-> Hinweis zur Übernahme ins CMS: Die mit **[Screenshot: …]** markierten Stellen zeigen, welcher
-> Bildschirmfoto-Nachweis dort eingefügt wird. Mit **[TODO: …]** markierte Angaben noch ergänzen.
+# NetWatch - CI/CD-Umgebung mit GitHub, Jenkins und Docker
+Projektdokumentation · NetDorm Solutions GmbH · Stand 05.10.2026
+Repository: <https://github.com/anguishhh/LeeroyJenkinsPipeline> (öffentlich)
 
 ---
 
-## 1. Ausgangslage und Ziel
+## 1. Ausgangslage (Lernsituation) und Ziel
 
-Die Entwicklungsabteilung verwaltet ihren Quellcode bereits mit GitHub, testet neue Versionen
-aber von Hand und lässt sie anschließend von einem Administrator auf einem Linux-Server
-bereitstellen. Daraus entstehen immer wieder dieselben Probleme: Tests werden vergessen,
-auf verschiedenen Systemen laufen unterschiedliche Softwarestände, und fehlerhafte Versionen
-gelangen auf Testsysteme.
+Die Entwicklungsabteilung verwaltet ihren Quellcode bereits mit GitHub, testet neue Versionen, aber von Hand und lässt sie anschließend von einem Administrator auf einem Linux-Server bereitstellen. Daraus entstehen immer wieder dieselben Probleme: Tests werden vergessen, auf verschiedenen Systemen laufen unterschiedliche Softwarestände, und fehlerhafte Versionen gelangen auf Testsysteme.
 
-Ziel des Projekts ist ein lauffähiger Prototyp, der diesen Ablauf automatisiert. Als
-Demonstrationsanwendung dient **NetWatch**, ein Monitoring-Programm in Bash, das Server und
-Netzwerkgeräte im Minutentakt per Ping prüft und die Ergebnisse dauerhaft in einer Datenbank
-speichert. Nach jedem Commit auf GitHub soll NetWatch automatisch getestet und – nur bei
-fehlerfreiem Durchlauf – als Docker-Container bereitgestellt werden.
-
-Der Prototyp ist vollständig umgesetzt und im Betrieb. Alle in Abschnitt 11 aufgeführten
-Testfälle wurden durchgeführt und bestanden.
+Ziel des Projekts ist ein lauffähiger Prototyp, der diesen Ablauf automatisiert. Als Demonstrationsanwendung dient **NetWatch**, ein Monitoring-Programm in Bash, das Server und Netzwerkgeräte im Minutentakt per Ping prüft und die Ergebnisse dauerhaft in einer Datenbank speichert. Nach jedem Commit auf GitHub soll NetWatch automatisch getestet und, bei fehlerfreiem Durchlauf, als Docker-Container bereitgestellt werden.
 
 ### Projektziele
 
-Aus der Ausgangslage ergeben sich sechs Ziele. Jedes ist so formuliert, dass überprüfbar ist,
-ob es erreicht wurde:
+Aus der Ausgangslage ergeben sich sechs Ziele:
 
 | # | Ziel | Woran wir es messen | Erreicht |
 |---|---|---|---|
-| 1 | Jede Codeänderung wird automatisch getestet, ohne dass jemand daran denken muss | Ein Push löst ohne weiteres Zutun einen Testlauf aus | ✓ Testfall P1: Push 12:19, Build 12:22, von der Pipeline selbst gestartet |
-| 2 | Fehlerhafte Versionen erreichen kein Testsystem | Ein absichtlich eingebauter Fehler führt zum Abbruch vor der Bereitstellung | ✓ Testfälle P2 und P3: Abbruch nach 8,6 bzw. 1 Sekunde, kein Deployment |
-| 3 | Auf dem Zielsystem läuft ein eindeutig bestimmbarer Softwarestand | Jede Version trägt die Buildnummer und den Commit-Hash | ✓ Image `netwatch:<Buildnummer>`, Version im Protokoll beim Start |
-| 4 | Die Bereitstellung erfolgt ohne Handarbeit auf dem Server | Nach bestandenen Tests läuft die neue Version ohne manuellen Eingriff | ✓ Stage *Deploy*, nachgewiesen in den Builds #3 und #6 |
-| 5 | Monitoring-Daten gehen nicht verloren | Daten überstehen Container- und Systemneustarts | ✓ Testfälle I10, B2 und B4: 462 → 477 Messungen über den VM-Neustart hinweg |
-| 6 | Zugangsdaten sind nirgends im Quellcode | Volltextsuche im Repository findet keine echten Passwörter | ✓ Testfall B5; das Produktivpasswort liegt nur im Credential-Speicher von Jenkins |
-
-Nicht Ziel des Projekts sind ein Produktivbetrieb mit mehreren Servern, Hochverfügbarkeit oder
-eine grafische Oberfläche. Es handelt sich ausdrücklich um einen Prototyp, der den Ablauf
-vollständig und nachvollziehbar zeigt.
+| 1 | Jede Codeänderung wird automatisch getestet, ohne dass jemand daran denken muss | Ein Push löst ohne weiteres Zutun einen Testlauf aus | Testfall P1: Push 12:19, Build 12:22, von der Pipeline selbst gestartet |
+| 2 | Fehlerhafte Versionen erreichen kein Testsystem | Ein absichtlich eingebauter Fehler führt zum Abbruch vor der Bereitstellung | Testfälle P2 und P3: Abbruch nach 8,6 bzw. 1 Sekunde, kein Deployment |
+| 3 | Auf dem Zielsystem läuft ein eindeutig bestimmbarer Softwarestand | Jede Version trägt die Buildnummer und den Commit-Hash |  Image `netwatch:<Buildnummer>`, Version im Protokoll beim Start |
+| 4 | Die Bereitstellung erfolgt ohne Handarbeit auf dem Server | Nach bestandenen Tests läuft die neue Version ohne manuellen Eingriff | Stage *Deploy*, nachgewiesen in den Builds #3 und #6 |
+| 5 | Monitoring-Daten gehen nicht verloren | Daten überstehen Container- und Systemneustarts | Testfälle I10, B2 und B4: 462 → 477 Messungen über den VM-Neustart hinweg |
+| 6 | Zugangsdaten sind nirgends im Quellcode | Volltextsuche im Repository findet keine echten Passwörter | Testfall B5; das Produktivpasswort liegt nur im Credential-Speicher von Jenkins |
 
 ---
 
@@ -49,8 +29,7 @@ vollständig und nachvollziehbar zeigt.
 
 ### 2.1 Vorgehen
 
-Die Umgebung wurde in fünf aufeinander aufbauenden Schritten geplant und umgesetzt. Jeder
-Schritt war für sich prüfbar, bevor der nächste begann:
+Die Umgebung wurde in fünf aufeinander aufbauenden Schritten geplant und umgesetzt. Jeder Schritt war für sich prüfbar, bevor der nächste begann:
 
 | Schritt | Inhalt | Prüfkriterium |
 |---------|--------|---------------|
@@ -77,8 +56,7 @@ Schritt war für sich prüfbar, bevor der nächste begann:
 
 ### 2.3 Netzplanung: lokales Netz, Internet und GitHub
 
-Die Umgebung besteht aus vier Zonen. Geplant wurde so, dass aus dem öffentlichen Netz **keine**
-Verbindung in die Umgebung hinein möglich ist; nach außen geht nur, was gebraucht wird.
+Die Umgebung besteht aus vier Zonen. Geplant wurde so, dass aus dem öffentlichen Netz keine Verbindung in die Umgebung hinein möglich ist; nach außen geht nur, was gebraucht wird.
 
 | Verbindung | Richtung | Protokoll / Port | Zweck |
 |---|---|---|---|
@@ -87,40 +65,27 @@ Verbindung in die Umgebung hinein möglich ist; nach außen geht nur, was gebrau
 | VM → Docker Hub, Debian- und Jenkins-Paketquellen | ausgehend ins öffentliche Netz | HTTPS 443/tcp, HTTP 80/tcp | Basis-Images, Pakete, Updates |
 | Container `netwatch` → überwachte Systeme | ausgehend, lokal und öffentlich | ICMP | die eigentliche Erreichbarkeitsprüfung |
 | Container `netwatch` → Container `db` | nur innerhalb des Docker-Netzes | PostgreSQL 5432/tcp | Speichern der Ergebnisse |
-| Öffentliches Netz → VM | **nicht möglich** | – | die VM hat keine öffentliche Adresse und keine Portweiterleitung |
+| Öffentliches Netz → VM | **nicht möglich** | - | die VM hat keine öffentliche Adresse und keine Portweiterleitung |
 
 Daraus ergeben sich drei Planungsentscheidungen:
 
-- **Zwei Netzwerkkarten mit getrennten Aufgaben.** Der NAT-Adapter stellt den Internetzugang
+- **Zwei Netzwerkkarten mit getrennten Aufgaben:** Der NAT-Adapter stellt den Internetzugang
   bereit, der Host-only-Adapter die Verwaltung. Dadurch ist die Verwaltung auch dann erreichbar,
   wenn das Internet ausfällt, und sie ist vom öffentlichen Netz getrennt.
-- **GitHub als einziger Berührungspunkt mit dem öffentlichen Netz im Projektablauf.** Der
+- **GitHub als einziger Berührungspunkt mit dem öffentlichen Netz im Projektablauf:** Der
   Quellcode liegt öffentlich auf GitHub, die Verbindung dorthin baut aber immer die VM auf.
   Genau deshalb fällt die Wahl auf Polling: Ein Webhook würde eine Verbindung von außen
   erfordern, die in dieser Netzumgebung weder möglich noch erwünscht ist.
-- **Datenbank ohne Netzzugang von außen.** Sie veröffentlicht keinen Port auf der VM, ist also
+- **Datenbank ohne Netzzugang von außen:** Sie veröffentlicht keinen Port auf der VM, ist also
   selbst aus dem Host-only-Netz nicht erreichbar.
 
-Weil das Repository öffentlich ist, gilt für den Quellcode: Alles darin ist für jeden lesbar.
-Zugangsdaten dürfen deshalb unter keinen Umständen hineingeraten – die Maßnahmen dazu stehen in
-den Abschnitten 6.4 und 8.4.
+Weil das Repository öffentlich ist, gilt für den Quellcode: Alles darin ist für jeden lesbar. Zugangsdaten dürfen deshalb unter keinen Umständen hineingeraten - die Maßnahmen dazu stehen in den Abschnitten 6.4 und 8.4.
 
 ### 2.4 Begründete Entscheidungen
 
-**Jenkins direkt auf der VM statt als Container.** Die Pipeline startet selbst Container
-(`docker build`, `docker compose`). Läuft Jenkins direkt auf dem System, nutzt es dafür
-einfach den vorhandenen Docker-Dienst. Als Container bräuchte Jenkins zusätzlich die
-Docker-CLI im Image und entweder den eingebundenen Docker-Socket oder „Docker in Docker“ in
-einem privilegierten Container. Außerdem stimmen so die Pfade: Die Pipeline bindet ihr
-Arbeitsverzeichnis in Testcontainer ein (`-v "$WORKSPACE:/code"`), was bei einem
-containerisierten Jenkins zu Pfadkonflikten zwischen Host und Container führt. Jenkins läuft
-als systemd-Dienst und startet nach einem Neustart der VM automatisch mit.
-Nachteil: Java und Jenkins liegen direkt auf dem System, Updates sind aufwändiger als ein
-Image-Austausch. Die nötige Mitgliedschaft des Benutzers `jenkins` in der Gruppe `docker`
-entspricht faktisch Root-Rechten – das gilt beim eingebundenen Docker-Socket allerdings
-genauso und ist daher kein Argument für die Container-Variante.
+**Jenkins direkt auf der VM statt als Container:** Die Pipeline startet selbst Container (`docker build`, `docker compose`). Läuft Jenkins direkt auf dem System, nutzt es dafür einfach den vorhandenen Docker-Dienst. Als Container bräuchte Jenkins zusätzlich die Docker-CLI im Image und entweder den eingebundenen Docker-Socket oder „Docker in Docker“ in einem privilegierten Container. Außerdem stimmen so die Pfade: Die Pipeline bindet ihr Arbeitsverzeichnis in Testcontainer ein (`-v "$WORKSPACE:/code"`), was bei einem containerisierten Jenkins zu Pfadkonflikten zwischen Host und Container führt. Jenkins läuft als systemd-Dienst und startet nach einem Neustart der VM automatisch mit. Nachteil: Java und Jenkins liegen direkt auf dem System, Updates sind aufwändiger als ein Image-Austausch. Die nötige Mitgliedschaft des Benutzers `jenkins` in der Gruppe `docker` entspricht faktisch Root-Rechten - das gilt beim eingebundenen Docker-Socket allerdings genauso und ist daher kein Argument für die Container-Variante.
 
-**Polling statt Webhook.**
+**Polling statt Webhook:**
 
 | | Polling (gewählt) | Webhook |
 |---|---|---|
@@ -130,23 +95,11 @@ genauso und ist daher kein Argument für die Container-Variante.
 | Netzwerk | nur ausgehende Verbindungen nötig | Jenkins muss aus dem Internet erreichbar sein |
 | Sicherheit | kein offener Port nach außen | öffentlicher Endpunkt, Absicherung per Secret und HTTPS nötig |
 
-Die VM steht hinter dem NAT von VirtualBox in einem Schulnetz und besitzt keine öffentliche
-Adresse. Ein Webhook von GitHub könnte sie nicht erreichen. Gewählt wurde deshalb Polling mit
-`pollSCM('H/2 * * * *')`. In einer Umgebung mit erreichbarem Server wäre der Webhook
-vorzuziehen, weil er schneller reagiert und keine Leerlauf-Abfragen erzeugt. Als Mittelweg
-ließe sich ein Weiterleitungsdienst wie smee.io einsetzen, der nur eine ausgehende Verbindung
-benötigt.
+Die VM steht hinter dem NAT von VirtualBox in einem Schulnetz und besitzt keine öffentliche Adresse. Ein Webhook von GitHub könnte sie nicht erreichen. Gewählt wurde deshalb Polling mit `pollSCM('H/2 * * * *')`. In einer Umgebung mit erreichbarem Server wäre der Webhook vorzuziehen, weil er schneller reagiert und keine Leerlauf-Abfragen erzeugt. Als Mittelweg ließe sich ein Weiterleitungsdienst wie smee.io einsetzen, der nur eine ausgehende Verbindung benötigt.
 
-**PostgreSQL als Datenbank.** Die Datentypen `inet` für IP-Adressen und `timestamptz` für
-Zeitstempel mit Zeitzone passen unmittelbar zu den Monitoring-Daten, und `inet` prüft die
-Gültigkeit einer Adresse bereits auf Datenbankebene. Entscheidend war außerdem, dass das
-Kommandozeilenwerkzeug `psql` Werte als Variablen übergeben bekommen kann (`:'name'`) und
-selbst korrekt maskiert. Ein Bash-Skript hat keine Datenbankbibliothek mit vorbereiteten
-Anweisungen; über diesen Weg ist der Zugriff trotzdem gegen SQL-Injection abgesichert.
+**PostgreSQL als Datenbank:** Die Datentypen `inet` für IP-Adressen und `timestamptz` für Zeitstempel mit Zeitzone passen unmittelbar zu den Monitoring-Daten, und `inet` prüft die Gültigkeit einer Adresse bereits auf Datenbankebene. Entscheidend war außerdem, dass das Kommandozeilenwerkzeug `psql` Werte als Variablen übergeben bekommen kann (`:'name'`) und selbst korrekt maskiert. Ein Bash-Skript hat keine Datenbankbibliothek mit vorbereiteten Anweisungen; über diesen Weg ist der Zugriff trotzdem gegen SQL-Injection abgesichert.
 
-**Trennung von Anwendung und Datenbank in zwei Container.** Jeder Container hat eine Aufgabe.
-Die Datenbank kann unabhängig von der Anwendung neu gestartet oder aktualisiert werden, und
-die Anwendung lässt sich bei jedem Commit austauschen, ohne die Daten zu berühren.
+**Trennung von Anwendung und Datenbank in zwei Container:** Jeder Container hat eine Aufgabe. Die Datenbank kann unabhängig von der Anwendung neu gestartet oder aktualisiert werden, und die Anwendung lässt sich bei jedem Commit austauschen, ohne die Daten zu berühren.
 
 ---
 
@@ -176,9 +129,7 @@ Entwickler ──git push──▶ GitHub-Repository
    überwachte Systeme (127.0.0.1, 1.1.1.1, 10.0.2.2, 192.168.56.10, 192.168.10.25)
 ```
 
-Die beiden Container liegen in einem eigenen Docker-Netz (`netwatch_backend`). Die Datenbank
-veröffentlicht bewusst keinen Port auf der VM: Sie ist ausschließlich für den
-NetWatch-Container erreichbar. Zugriffe zur Kontrolle erfolgen über `docker exec`.
+Die beiden Container liegen in einem eigenen Docker-Netz (`netwatch_backend`). Die Datenbank veröffentlicht bewusst keinen Port auf der VM: Sie ist ausschließlich für den NetWatch-Container erreichbar. Zugriffe zur Kontrolle erfolgen über `docker exec`.
 
 ### Komponenten im Überblick
 
@@ -197,38 +148,35 @@ NetWatch-Container erreichbar. Zugriffe zur Kontrolle erfolgen über `docker exe
 
 ## 4. Zusammenspiel der Komponenten
 
-Der folgende Ablauf beschreibt, was nach einer Codeänderung passiert. Er wurde als Testfall P1
-nachgewiesen.
+Der folgende Ablauf beschreibt, was nach einer Codeänderung passiert. Er wurde als Testfall P1 nachgewiesen.
 
-1. **Commit und Push.** Die Entwicklerin ändert den Quellcode und überträgt den Commit nach
+1. **Commit und Push:** Die Entwicklerin ändert den Quellcode und überträgt den Commit nach
    GitHub. Beispiel aus dem Test: Commit `2e1c752`, gepusht um 12:19 Uhr.
-2. **Erkennung.** Jenkins fragt alle zwei Minuten bei GitHub nach neuen Commits. Um 12:22 Uhr
+2. **Erkennung:** Jenkins fragt alle zwei Minuten bei GitHub nach neuen Commits. Um 12:22 Uhr
    stellt es die Änderung fest und startet Build #3. Auf der Build-Seite steht als Auslöser
-   „Build wurde durch eine SCM-Änderung ausgelöst“ – der Build wurde also nicht von Hand
+   „Build wurde durch eine SCM-Änderung ausgelöst“ - der Build wurde also nicht von Hand
    gestartet.
-3. **Checkout.** Die Pipeline holt den Stand aus GitHub in ihr Arbeitsverzeichnis und gibt den
+3. **Checkout:** Die Pipeline holt den Stand aus GitHub in ihr Arbeitsverzeichnis und gibt den
    Commit samt Autor im Protokoll aus.
-4. **Statische Analyse.** ShellCheck prüft alle Bash-Skripte auf Fehler und riskante
+4. **Statische Analyse:** ShellCheck prüft alle Bash-Skripte auf Fehler und riskante
    Konstruktionen. Findet es etwas, bricht die Pipeline hier ab.
-5. **Unit-Tests.** 14 Tests mit dem Framework bats prüfen die einzelnen Funktionen des
+5. **Unit-Tests:** 14 Tests mit dem Framework bats prüfen die einzelnen Funktionen des
    Skripts, ohne Netzwerk und ohne Datenbank. Das Ergebnis wird als JUnit-Bericht an Jenkins
    übergeben und erscheint dort als Testverlauf.
-6. **Image bauen.** Erst jetzt entsteht aus dem Dockerfile das Image `netwatch:<Buildnummer>`.
+6. **Image bauen:** Erst jetzt entsteht aus dem Dockerfile das Image `netwatch:<Buildnummer>`.
    Der kurze Commit-Hash wird als Version in das Image geschrieben und beim Start protokolliert.
-7. **Integrationstest.** In einem eigenen, temporären Compose-Projekt startet eine
+7. **Integrationstest:** In einem eigenen, temporären Compose-Projekt startet eine
    Test-Datenbank. NetWatch führt dort einen einzelnen Prüfdurchlauf aus, anschließend liest
    der Test die Ergebnisse direkt aus der Datenbank. Die Produktivumgebung bleibt unberührt.
-8. **Deploy.** Die Stage *Deploy* holt Benutzername und Passwort der Produktivdatenbank aus dem
+8. **Deploy:** Die Stage *Deploy* holt Benutzername und Passwort der Produktivdatenbank aus dem
    Jenkins-Credential und startet die neue Version mit `docker compose up -d --wait`. Compose
    ersetzt nur den NetWatch-Container; die Datenbank und ihr Volume bleiben bestehen.
-9. **Betrieb.** Der neue Container prüft ab sofort im Minutentakt alle Systeme aus der
+9. **Betrieb:** Der neue Container prüft ab sofort im Minutentakt alle Systeme aus der
    Hostliste und schreibt die Ergebnisse in die Datenbank.
 
-Schlägt eine Stage fehl, bricht Jenkins sofort ab. Die Stage *Deploy* wird dann nie erreicht,
-und die zuvor erfolgreich getestete Version läuft unverändert weiter. Das fehlerhafte Image
-wird in der Nachbearbeitung wieder entfernt.
+Schlägt eine Stage fehl, bricht Jenkins sofort ab. Die Stage *Deploy* wird dann nie erreicht, und die zuvor erfolgreich getestete Version läuft unverändert weiter. Das fehlerhafte Image wird in der Nachbearbeitung wieder entfernt.
 
-> **[Screenshot: Build #3 – Startseite mit „Build wurde durch eine SCM-Änderung ausgelöst“ und Revision 2e1c752]**
+> Screenshot1
 
 ---
 
@@ -246,9 +194,7 @@ wird in der Nachbearbeitung wieder entfernt.
 | Hostname | `netwatch-vm` |
 | Zeitzone | Europe/Berlin |
 
-Installiert wurde nur das Nötigste: Standard-Systemwerkzeuge und der SSH-Server. Auf eine
-Desktop-Umgebung wurde verzichtet, weil ein Server sie nicht benötigt und sie unnötig
-Ressourcen und Angriffsfläche kostet.
+Installiert wurde nur das Nötigste: Standard-Systemwerkzeuge und der SSH-Server. Auf eine Desktop-Umgebung wurde verzichtet, weil ein Server sie nicht benötigt und sie unnötig Ressourcen und Angriffsfläche kostet.
 
 ### 5.2 Netzwerk
 
@@ -260,9 +206,7 @@ Die VM besitzt zwei Netzwerkkarten mit klar getrennten Aufgaben:
 | `enp0s8` | Host-only | 192.168.56.10/24 (statisch) | Verwaltung vom Windows-PC: SSH und Jenkins-Oberfläche |
 | `docker0` und Compose-Netze | Bridge | 172.16.0.0/12 | interne Kommunikation der Container |
 
-Der Host-only-Adapter erhält eine feste Adresse, damit SSH-Zugang und Jenkins-URL dauerhaft
-gleich bleiben. Er bekommt bewusst **kein** Standard-Gateway: Der gesamte ausgehende Verkehr
-läuft über den NAT-Adapter. Die Konfiguration steht in `/etc/network/interfaces`:
+Der Host-only-Adapter erhält eine feste Adresse, damit SSH-Zugang und Jenkins-URL dauerhaft gleich bleiben. Er bekommt bewusst **kein** Standard-Gateway: Der gesamte ausgehende Verkehr läuft über den NAT-Adapter. Die Konfiguration steht in `/etc/network/interfaces`:
 
 ```
 auto enp0s8
@@ -280,14 +224,9 @@ iface enp0s8 inet static
 | `postgres` | Dienstkonto im Datenbank-Container | Datenbankserver |
 | `root` | Systemkonto | Anmeldung gesperrt (`passwd -S root` meldet `L`); Verwaltung ausschließlich über `sudo` |
 
-Die Mitgliedschaft in der Gruppe `docker` erlaubt den Zugriff auf den Docker-Socket und
-entspricht damit faktisch Root-Rechten auf der VM. Für `jenkins` ist das unvermeidbar, weil
-die Pipeline Container bauen und starten muss. Für einen produktiven Einsatz wäre „rootless
-Docker“ oder ein eigener Build-Agent die sauberere Lösung; für einen Prototyp auf einer
-isolierten VM ist das Risiko vertretbar und bewusst in Kauf genommen.
+Die Mitgliedschaft in der Gruppe `docker` erlaubt den Zugriff auf den Docker-Socket und entspricht damit faktisch Root-Rechten auf der VM. Für `jenkins` ist das unvermeidbar, weil die Pipeline Container bauen und starten muss. Für einen produktiven Einsatz wäre „rootless Docker“ oder ein eigener Build-Agent die sauberere Lösung; für einen Prototyp auf einer isolierten VM ist das Risiko vertretbar und bewusst in Kauf genommen.
 
-Im Container läuft die Anwendung dagegen als unprivilegierter Benutzer `netwatch`. Ping
-funktioniert trotzdem, weil Docker unprivilegierte ICMP-Sockets standardmäßig erlaubt.
+Im Container läuft die Anwendung dagegen als unprivilegierter Benutzer `netwatch`. Ping funktioniert trotzdem, weil Docker unprivilegierte ICMP-Sockets standardmäßig erlaubt.
 
 ### 5.4 Installierte Pakete
 
@@ -305,9 +244,7 @@ Installiert wurde nur, was für den Auftrag gebraucht wird:
 | `fontconfig`, `openjdk-21-jre` | 21.0.12 | Laufzeitumgebung für Jenkins |
 | `jenkins` | 2.580.1 (LTS) | Automatisierungsserver |
 
-Docker und Jenkins stammen aus den offiziellen Herstellerquellen, die mit eigenem
-Signaturschlüssel eingebunden wurden. Das ist aktueller als die Debian-Pakete und war bei
-Jenkins auch nötig, weil die Distribution keine aktuelle LTS-Fassung mitbringt.
+Docker und Jenkins stammen aus den offiziellen Herstellerquellen, die mit eigenem Signaturschlüssel eingebunden wurden. Das ist aktueller als die Debian-Pakete und war bei Jenkins auch nötig, weil die Distribution keine aktuelle LTS-Fassung mitbringt.
 
 ### 5.5 Installierte Dienste
 
@@ -315,9 +252,9 @@ Jenkins auch nötig, weil die Distribution keine aktuelle LTS-Fassung mitbringt.
 |---|---|---|
 | OpenSSH | 22/tcp | nur aus 192.168.56.0/24 |
 | Jenkins | 8080/tcp | nur aus 192.168.56.0/24 |
-| Docker und containerd | – | lokal |
+| Docker und containerd | - | lokal |
 | Container `db` (PostgreSQL) | 5432/tcp | nur im internen Docker-Netz |
-| Container `netwatch` | – | keine eingehenden Verbindungen |
+| Container `netwatch` | - | keine eingehenden Verbindungen |
 
 ### 5.6 Absicherung
 
@@ -332,7 +269,7 @@ Jenkins auch nötig, weil die Distribution keine aktuelle LTS-Fassung mitbringt.
 - **Automatische Sicherheitsupdates** über `unattended-upgrades`.
 - **Minimale Installation** ohne Desktop und ohne nicht benötigte Dienste.
 
-> **[Screenshot: `sudo ufw status verbose` mit den beiden Freigaben]**
+> Screenshot2
 
 ---
 
@@ -356,15 +293,11 @@ docs/                     Dokumentation (VM-Einrichtung, Testkonzept, dieser Tex
 .gitignore .gitattributes .dockerignore
 ```
 
-Die Gliederung trennt Programm (`bin/`), Konfiguration (`config/`), Datenbank (`sql/`), Tests
-(`tests/`) und Dokumentation (`docs/`). Die Definition der Infrastruktur liegt bewusst im
-selben Repository: Dockerfile, Compose-Datei und Jenkinsfile werden damit genauso versioniert
-und überprüft wie der Programmcode.
+Die Gliederung trennt Programm (`bin/`), Konfiguration (`config/`), Datenbank (`sql/`), Tests (`tests/`) und Dokumentation (`docs/`). Die Definition der Infrastruktur liegt bewusst im selben Repository: Dockerfile, Compose-Datei und Jenkinsfile werden damit genauso versioniert und überprüft wie der Programmcode.
 
 ### 6.2 Einsatz von Git
 
-Die Arbeit erfolgt in thematisch abgegrenzten Commits mit aussagekräftigen Nachrichten, zum
-Beispiel:
+Die Arbeit erfolgt in thematisch abgegrenzten Commits mit aussagekräftigen Nachrichten, zum Beispiel:
 
 ```
 Projektgrundlage: .gitignore und .gitattributes
@@ -379,28 +312,17 @@ Revert "Testfall P2: absichtlicher Fehler, ONLINE und OFFLINE vertauscht"
 Pipeline: alte Testberichte vor jedem Lauf entfernen
 ```
 
-Die absichtlich fehlerhaften Commits der Testfälle P2 und P3 wurden nicht gelöscht, sondern mit
-`git revert` zurückgenommen. Dadurch bleibt in der Historie nachvollziehbar, dass der Fehler
-eingebaut, von der Pipeline erkannt und anschließend korrigiert wurde.
+Die absichtlich fehlerhaften Commits der Testfälle P2 und P3 wurden nicht gelöscht, sondern mit `git revert` zurückgenommen. Dadurch bleibt in der Historie nachvollziehbar, dass der Fehler eingebaut, von der Pipeline erkannt und anschließend korrigiert wurde.
 
 ### 6.3 Umgang mit Zeilenenden
 
-Entwickelt wird unter Windows, ausgeführt wird unter Linux. Eine Datei mit
-Windows-Zeilenenden bricht im Container mit der Meldung `$'\r': command not found` ab. Die
-Datei `.gitattributes` legt deshalb mit `* text=auto eol=lf` fest, dass alle Textdateien mit
-Unix-Zeilenenden gespeichert werden. Ergänzend verarbeitet das Skript auch eine Hostliste mit
-Windows-Zeilenenden korrekt – das wird von einem eigenen Unit-Test abgedeckt.
+Entwickelt wird unter Windows, ausgeführt wird unter Linux. Eine Datei mit Windows-Zeilenenden bricht im Container mit der Meldung `$'\r': command not found` ab. Die Datei `.gitattributes` legt deshalb mit `* text=auto eol=lf` fest, dass alle Textdateien mit Unix-Zeilenenden gespeichert werden. Ergänzend verarbeitet das Skript auch eine Hostliste mit Windows-Zeilenenden korrekt - das wird von einem eigenen Unit-Test abgedeckt.
 
 ### 6.4 Keine Passwörter im Repository
 
-Die mitgelieferte `.gitignore` wurde durch eine projektbezogene Fassung ersetzt. Sie schließt
-`.env`, `*.env`, `secrets/`, Schlüsseldateien, Testergebnisse und Editor-Dateien aus. Versioniert
-ist nur die Vorlage `.env.example` mit dem Platzhalter `bitte-aendern`.
+Die mitgelieferte `.gitignore` wurde durch eine projektbezogene Fassung ersetzt. Sie schließt `.env`, `*.env`, `secrets/`, Schlüsseldateien, Testergebnisse und Editor-Dateien aus. Versioniert ist nur die Vorlage `.env.example` mit dem Platzhalter `bitte-aendern`.
 
-Nachweis (Testfall B5): Eine Volltextsuche im gesamten Repository findet ausschließlich
-Variablennamen wie `POSTGRES_PASSWORD`, den Platzhalter der Vorlage und das zufällig erzeugte
-Einmal-Passwort des Integrationstests. Das Passwort der Produktivdatenbank existiert weder im
-Repository noch als Datei auf der VM, sondern ausschließlich im Credential-Speicher von Jenkins.
+Nachweis (Testfall B5): Eine Volltextsuche im gesamten Repository findet ausschließlich Variablennamen wie `POSTGRES_PASSWORD`, den Platzhalter der Vorlage und das zufällig erzeugte Einmal-Passwort des Integrationstests. Das Passwort der Produktivdatenbank existiert weder im Repository noch als Datei auf der VM, sondern ausschließlich im Credential-Speicher von Jenkins.
 
 ---
 
@@ -408,12 +330,9 @@ Repository noch als Datei auf der VM, sondern ausschließlich im Credential-Spei
 
 ### 7.1 Funktionsweise
 
-NetWatch liest eine Liste zu überwachender Systeme, prüft jedes davon per ICMP-Ping und
-speichert für jede Prüfung Hostname, IP-Adresse, Prüfzeitpunkt, Status und Antwortzeit. Danach
-wartet es bis zum nächsten Intervall, standardmäßig eine Minute.
+NetWatch liest eine Liste zu überwachender Systeme, prüft jedes davon per ICMP-Ping und speichert für jede Prüfung Hostname, IP-Adresse, Prüfzeitpunkt, Status und Antwortzeit. Danach wartet es bis zum nächsten Intervall, standardmäßig eine Minute.
 
-Die Hostliste `config/hosts.conf` ist bewusst einfach aufgebaut, damit sie ohne Spezialwissen
-gepflegt werden kann:
+Die Hostliste `config/hosts.conf` ist bewusst einfach aufgebaut, damit sie ohne Spezialwissen gepflegt werden kann:
 
 ```
 # Format: <hostname> <IPv4-Adresse>
@@ -426,8 +345,7 @@ fileserver01     192.168.10.25
 
 ### 7.2 Aufbau des Skripts
 
-Das Skript ist in kleine, einzeln prüfbare Funktionen gegliedert. Genau diese Gliederung macht
-die Unit-Tests möglich:
+Das Skript ist in kleine, einzeln prüfbare Funktionen gegliedert. Genau diese Gliederung macht die Unit-Tests möglich:
 
 | Funktion | Aufgabe |
 |---|---|
@@ -464,14 +382,13 @@ netwatch-vm          192.168.56.10   2026-10-05 12:55:49+0200  ONLINE  0.040 ms
 fileserver01         192.168.10.25   2026-10-05 12:55:49+0200  OFFLINE
 ```
 
-Zusätzlich gibt es die Konsolenanwendung `netwatch-report.sh`, die den aktuellen Status je
-System und die letzten Prüfungen aus der Datenbank anzeigt:
+Zusätzlich gibt es die Konsolenanwendung `netwatch-report.sh`, die den aktuellen Status je System und die letzten Prüfungen aus der Datenbank anzeigt:
 
 ```
 docker exec netwatch-netwatch-1 netwatch-report.sh 10
 ```
 
-> **[Screenshot: Ausgabe von `netwatch-report.sh` mit aktuellem Status und letzten Prüfungen]**
+> Screenshot3
 
 ---
 
@@ -479,8 +396,7 @@ docker exec netwatch-netwatch-1 netwatch-report.sh 10
 
 ### 8.1 Datenmodell
 
-Das Modell trennt die überwachten Systeme von den einzelnen Messungen. Ein System hat viele
-Prüfergebnisse (1:n):
+Das Modell trennt die überwachten Systeme von den einzelnen Messungen. Ein System hat viele Prüfergebnisse (1:n):
 
 ```
 ┌──────────────────────┐             ┌────────────────────────────────┐
@@ -494,8 +410,7 @@ Prüfergebnisse (1:n):
                                      └────────────────────────────────┘
 ```
 
-Ohne diese Trennung stünde der Hostname in jeder einzelnen Messung erneut – bei einer Prüfung
-pro Minute und Host wären das schnell Zehntausende redundante Einträge.
+Ohne diese Trennung stünde der Hostname in jeder einzelnen Messung erneut - bei einer Prüfung pro Minute und Host wären das schnell Zehntausende redundante Einträge.
 
 ### 8.2 Qualitätssicherung in der Datenbank
 
@@ -510,23 +425,17 @@ Das Schema lässt fehlerhafte Daten gar nicht erst zu:
 | `REFERENCES hosts … ON DELETE CASCADE` | keine Messungen ohne zugehöriges System |
 | Index auf `(host_id, checked_at DESC)` | schnelle Abfrage des letzten Ergebnisses |
 
-Die View `v_latest_status` liefert den jeweils aktuellsten Stand je System und wird von der
-Konsolenanwendung und den Tests genutzt.
+Die View `v_latest_status` liefert den jeweils aktuellsten Stand je System und wird von der Konsolenanwendung und den Tests genutzt.
 
-Das Schema wird beim Start der Anwendung automatisch angelegt. Alle Anweisungen sind so
-formuliert, dass ein erneuter Start vorhandene Daten nicht verändert.
+Das Schema wird beim Start der Anwendung automatisch angelegt. Alle Anweisungen sind so formuliert, dass ein erneuter Start vorhandene Daten nicht verändert.
 
 ### 8.3 Persistenz
 
-Die Datenbank legt ihre Dateien im benannten Volume `netwatch_pgdata` ab, das unabhängig von
-den Containern besteht. Nachgewiesen wurde das dreifach: im Integrationstest nach
-`docker compose down` (I10), nach dem Neustart des Anwendungscontainers (B2) und nach dem
-Neustart der kompletten VM (B4: 462 Prüfungen davor, 477 danach).
+Die Datenbank legt ihre Dateien im benannten Volume `netwatch_pgdata` ab, das unabhängig von den Containern besteht. Nachgewiesen wurde das dreifach: im Integrationstest nach `docker compose down` (I10), nach dem Neustart des Anwendungscontainers (B2) und nach dem Neustart der kompletten VM (B4: 462 Prüfungen davor, 477 danach).
 
 ### 8.4 Zugangsdaten
 
-Das Skript enthält keine Zugangsdaten. Es liest ausschließlich die Standardvariablen von
-`psql` (`PGHOST`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`). Der Weg des Passworts:
+Das Skript enthält keine Zugangsdaten. Es liest ausschließlich die Standardvariablen von `psql` (`PGHOST`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`). Der Weg des Passworts:
 
 ```
 Jenkins-Credential "netwatch-db"
@@ -536,11 +445,9 @@ Jenkins-Credential "netwatch-db"
    → psql verwendet sie für die Verbindung
 ```
 
-Im Integrationstest wird stattdessen bei jedem Lauf ein zufälliges Einmal-Passwort erzeugt, das
-nirgends gespeichert wird. Für die Arbeit auf einem Entwicklungsrechner dient eine lokale
-Datei `.env`, die von Git ausgeschlossen ist.
+Im Integrationstest wird stattdessen bei jedem Lauf ein zufälliges Einmal-Passwort erzeugt, das nirgends gespeichert wird. Für die Arbeit auf einem Entwicklungsrechner dient eine lokale Datei `.env`, die von Git ausgeschlossen ist.
 
-> **[Screenshot: SQL-Abfrage mit der Anzahl der Prüfungen je Host]**
+> Screenshot4
 
 ---
 
@@ -548,18 +455,11 @@ Datei `.env`, die von Git ausgeschlossen ist.
 
 ### 9.1 Image der Anwendung
 
-Das Dockerfile baut auf `debian:trixie-slim` auf, also derselben Distribution wie die VM. Es
-installiert nur drei Pakete: `iputils-ping` für die Prüfung, `postgresql-client` für `psql` und
-`tzdata` für die korrekte lokale Zeit. Anschließend legt es den unprivilegierten Benutzer
-`netwatch` an, kopiert Programm, Schema und Konfiguration und setzt die Ausführungsrechte
-explizit – unter Windows gehen diese beim Commit sonst verloren.
+Das Dockerfile baut auf `debian:trixie-slim` auf, also derselben Distribution wie die VM. Es installiert nur drei Pakete: `iputils-ping` für die Prüfung, `postgresql-client` für `psql` und `tzdata` für die korrekte lokale Zeit. Anschließend legt es den unprivilegierten Benutzer `netwatch` an, kopiert Programm, Schema und Konfiguration und setzt die Ausführungsrechte explizit - unter Windows gehen diese beim Commit sonst verloren.
 
-Die Buildnummer und der Commit-Hash werden als Version in das Image übernommen und beim Start
-protokolliert. Dadurch ist im laufenden Betrieb jederzeit erkennbar, welcher Softwarestand
-gerade aktiv ist.
+Die Buildnummer und der Commit-Hash werden als Version in das Image übernommen und beim Start protokolliert. Dadurch ist im laufenden Betrieb jederzeit erkennbar, welcher Softwarestand gerade aktiv ist.
 
-Eine `.dockerignore` sorgt dafür, dass weder das `.git`-Verzeichnis noch Dokumentation oder
-eine eventuell vorhandene `.env` in den Build-Kontext gelangen.
+Eine `.dockerignore` sorgt dafür, dass weder das `.git`-Verzeichnis noch Dokumentation oder eine eventuell vorhandene `.env` in den Build-Kontext gelangen.
 
 ### 9.2 Zusammenspiel über Docker Compose
 
@@ -574,12 +474,9 @@ eine eventuell vorhandene `.env` in den Build-Kontext gelangen.
 | `restart: unless-stopped` | beide Container starten nach einem Neustart der VM automatisch |
 | `${POSTGRES_PASSWORD:?…}` | fehlt das Passwort, bricht Compose mit klarer Meldung ab |
 
-Der Integrationstest startet dieselbe Compose-Datei unter einem eigenen Projektnamen
-(`netwatch-test-<Buildnummer>`). Dadurch entstehen eigene Container, ein eigenes Netz und ein
-eigenes Volume; die Produktivumgebung läuft ungestört weiter. Im Testfall B2 war dieser Zustand
-sichtbar: Während `netwatch-test-7-db-1` lief, prüfte `netwatch-netwatch-1` ununterbrochen weiter.
+Der Integrationstest startet dieselbe Compose-Datei unter einem eigenen Projektnamen (`netwatch-test-<Buildnummer>`). Dadurch entstehen eigene Container, ein eigenes Netz und ein eigenes Volume; die Produktivumgebung läuft ungestört weiter. Im Testfall B2 war dieser Zustand sichtbar: Während `netwatch-test-7-db-1` lief, prüfte `netwatch-netwatch-1` ununterbrochen weiter.
 
-> **[Screenshot: `docker ps` mit Produktiv- und Testcontainern gleichzeitig]**
+> Screenshot5
 
 ---
 
@@ -587,10 +484,7 @@ sichtbar: Während `netwatch-test-7-db-1` lief, prüfte `netwatch-netwatch-1` un
 
 ### 10.1 Einrichtung
 
-Jenkins 2.580.1 wurde aus dem offiziellen Jenkins-Repository installiert und läuft als
-systemd-Dienst unter OpenJDK 21. Der Benutzer `jenkins` wurde in die Gruppe `docker`
-aufgenommen, damit die Pipeline Images bauen und Container starten kann. Die Oberfläche ist
-unter `http://192.168.56.10:8080` erreichbar, ausschließlich aus dem Host-only-Netz.
+Jenkins 2.580.1 wurde aus dem offiziellen Jenkins-Repository installiert und läuft als systemd-Dienst unter OpenJDK 21. Der Benutzer `jenkins` wurde in die Gruppe `docker` aufgenommen, damit die Pipeline Images bauen und Container starten kann. Die Oberfläche ist unter `http://192.168.56.10:8080` erreichbar, ausschließlich aus dem Host-only-Netz.
 
 Eingerichtet wurden:
 
@@ -599,12 +493,11 @@ Eingerichtet wurden:
 - ein Job vom Typ *Pipeline* mit der Definition „Pipeline script from SCM“, der das Jenkinsfile
   aus dem Branch `main` des GitHub-Repositorys liest.
 
-Damit liegt die gesamte Pipeline-Definition im Repository und nicht in der
-Jenkins-Konfiguration. Sie ist versioniert, überprüfbar und bei einer Neuinstallation von
-Jenkins mit wenigen Klicks wiederhergestellt.
+Damit liegt die gesamte Pipeline-Definition im Repository und nicht in der Jenkins-Konfiguration. Sie ist versioniert, überprüfbar und bei einer Neuinstallation von Jenkins mit wenigen Klicks wiederhergestellt.
 
-> **[Screenshot: Credential `netwatch-db` in der Jenkins-Verwaltung]**
-> **[Screenshot: Job-Konfiguration „Pipeline script from SCM“ mit Repository-URL und Branch]**
+> Screenshot6
+
+> Screenshot7
 
 ### 10.2 Aufbau der Pipeline
 
@@ -619,7 +512,7 @@ Jenkins mit wenigen Klicks wiederhergestellt.
 
 Insgesamt dauert ein vollständiger Durchlauf etwa 37 Sekunden. Weitere Einstellungen:
 
-- **Trigger:** `pollSCM('H/2 * * * *')` – Abfrage alle zwei Minuten.
+- **Trigger:** `pollSCM('H/2 * * * *')` - Abfrage alle zwei Minuten.
 - **Zeitlimit:** 20 Minuten, damit ein hängender Build nicht dauerhaft blockiert.
 - **Keine parallelen Builds**, damit sich zwei Durchläufe nicht gegenseitig die Container
   wegräumen.
@@ -633,20 +526,18 @@ Die Tests sind nach Aufwand gestaffelt, sodass einfache Fehler früh und billig 
 
 1. **ShellCheck** findet Syntax- und Stilfehler in Sekunden, ohne etwas auszuführen.
 2. **Unit-Tests** prüfen die Logik der einzelnen Funktionen, ohne Netzwerk und Datenbank. Der
-   Ping wird dabei durch eine Testfunktion ersetzt, sodass beide Fälle – erreichbar und nicht
-   erreichbar – zuverlässig und ohne Wartezeit prüfbar sind.
+   Ping wird dabei durch eine Testfunktion ersetzt, sodass beide Fälle - erreichbar und nicht
+   erreichbar - zuverlässig und ohne Wartezeit prüfbar sind.
 3. **Integrationstest** prüft das Zusammenspiel aller Teile gegen eine echte PostgreSQL-Datenbank,
    einschließlich der Fehlerfälle „falsches Passwort“ und „Datenbank nicht erreichbar“.
 
-> **[Screenshot: Job-Übersicht mit den Builds #1 bis #6 und dem Trend der Testergebnisse]**
+> Screenshot8
 
 ---
 
 ## 11. Testkonzept und Ergebnisse
 
-Getestet wurde auf vier Ebenen: automatisierte Unit-Tests (U), automatisierte Integrationstests
-(I), Tests der Pipeline selbst (P) und Tests des laufenden Betriebs (B). U und I laufen bei
-jedem Commit automatisch, P und B wurden einmalig von Hand durchgeführt und dokumentiert.
+Getestet wurde auf vier Ebenen: automatisierte Unit-Tests (U), automatisierte Integrationstests (I), Tests der Pipeline selbst (P) und Tests des laufenden Betriebs (B). U und I laufen bei jedem Commit automatisch, P und B wurden einmalig von Hand durchgeführt und dokumentiert.
 
 ### 11.1 Automatisierte Tests (Nachweis: Build #1 und folgende)
 
@@ -654,7 +545,7 @@ jedem Commit automatisch, P und B wurden einmalig von Hand durchgeführt und dok
 |---|---|---|---|---|---|
 | U1 | gültige IP-Adressen | positiv | werden akzeptiert | `ok 1` | ✓ |
 | U2 | ungültige IP-Adressen (256.1.1.1, 1.2.3, abc) | negativ | werden abgelehnt | `ok 2` | ✓ |
-| U3 | Antwortzeit aus ping-Ausgabe lesen | positiv | `time=0.045 ms` → `0.045` | `ok 5–7` | ✓ |
+| U3 | Antwortzeit aus ping-Ausgabe lesen | positiv | `time=0.045 ms` → `0.045` | `ok 5-7` | ✓ |
 | U4 | Ping erfolgreich (simuliert) | positiv | `ONLINE 12.3` | `ok 8` | ✓ |
 | U5 | Ping fehlgeschlagen (simuliert) | negativ | `OFFLINE` | `ok 9` | ✓ |
 | U6 | Hostliste mit Kommentaren, Leerzeilen, Windows-Zeilenenden | positiv | nur gültige Einträge | `ok 10, 12` | ✓ |
@@ -667,9 +558,7 @@ jedem Commit automatisch, P und B wurden einmalig von Hand durchgeführt und dok
 | I9 | Datenbank gestoppt | negativ | Fehler, Rückgabewert ≠ 0 | `could not translate host name "db"` | ✓ |
 | I10 | `docker compose down` und Neustart | positiv | Daten noch vorhanden | 2 von 2 Datensätzen | ✓ |
 
-Als Negativtest dient die Adresse 192.0.2.1. Sie stammt aus dem laut RFC 5737 für
-Dokumentationszwecke reservierten Bereich und wird im Internet nie geroutet – der Test ist
-dadurch unabhängig von der jeweiligen Netzumgebung immer aussagekräftig.
+Als Negativtest dient die Adresse 192.0.2.1. Sie stammt aus dem laut RFC 5737 für Dokumentationszwecke reservierten Bereich und wird im Internet nie geroutet - der Test ist dadurch unabhängig von der jeweiligen Netzumgebung immer aussagekräftig.
 
 ### 11.2 Tests der Pipeline (05.10.2026)
 
@@ -680,19 +569,17 @@ dadurch unabhängig von der jeweiligen Netzumgebung immer aussagekräftig.
 | P3 | Stilfehler wird gestoppt | Abbruch in der Stage *Lint*, kein Deploy | Build #5 rot in *Lint* nach 1 Sekunde (`SC2086`, Rückgabewert 1); alle folgenden Stages übersprungen, kein Image gebaut | ✓ |
 | P4 | Korrektur per `git revert` | Pipeline wieder grün | Build #6, 37 s, alle Stages grün, Deploy von `netwatch:6` | ✓ |
 
-P2 ist der Kerntest des Auftrags: Eine fehlerhafte Version darf nicht bereitgestellt werden.
-Die Pipeline hat den Fehler nicht nur erkannt, sie hat ihn so früh erkannt, dass gar kein Image
-entstanden ist.
+P2 ist der Kerntest des Auftrags: Eine fehlerhafte Version darf nicht bereitgestellt werden. Die Pipeline hat den Fehler nicht nur erkannt, sie hat ihn so früh erkannt, dass gar kein Image entstanden ist.
 
-P2 und P3 zeigen zusammen die Staffelung der Teststufen. Der Stilfehler aus P3 fiel bereits
-nach einer Sekunde in der statischen Analyse auf, noch bevor ein Test ausgeführt oder ein Image
-gebaut wurde. Der inhaltliche Fehler aus P2 kam erst in den Unit-Tests zum Vorschein. In beiden
-Fällen blieb die zuvor getestete Version unverändert in Betrieb.
+P2 und P3 zeigen zusammen die Staffelung der Teststufen. Der Stilfehler aus P3 fiel bereits nach einer Sekunde in der statischen Analyse auf, noch bevor ein Test ausgeführt oder ein Image gebaut wurde. Der inhaltliche Fehler aus P2 kam erst in den Unit-Tests zum Vorschein. In beiden Fällen blieb die zuvor getestete Version unverändert in Betrieb.
 
-> **[Screenshot: Build #4 – rot, mit dem Namen des fehlgeschlagenen Tests]**
-> **[Screenshot: Build #5 – Stage-Ansicht mit rotem Lint, ShellCheck-Meldung SC2086 und übersprungenen Folgestages]**
-> **[Screenshot: Build-Dauer-Trend, der den Unterschied zwischen 8,6 s und 37 s zeigt]**
-> **[Screenshot: Build #6 – grün, mit beiden Revert-Commits]**
+> Screenshot9
+
+> Screenshot10
+
+> Screenshot11
+
+> Screenshot12
 
 ### 11.3 Tests des laufenden Betriebs
 
@@ -704,20 +591,20 @@ Fällen blieb die zuvor getestete Version unverändert in Betrieb.
 | B4 | Neustart der VM | alles startet automatisch, Daten bleiben | Docker und Jenkins aktiv, beide Container automatisch gestartet, 462 → 477 Messungen | ✓ |
 | B5 | keine Passwörter im Repository | nur Variablennamen und Platzhalter | bestätigt, `.env` nicht versioniert und auf der VM nicht vorhanden | ✓ |
 
-> **[Screenshot: B3 – Protokoll mit den Fehlermeldungen während des Datenbankausfalls]**
-> **[Screenshot: B4 – Anzahl der Messungen vor und nach dem Neustart der VM]**
+> Screenshot13
+
+> Screenshot14
 
 ---
 
 ## 12. Probleme und Abweichungen
 
-Die folgenden Punkte traten während der Umsetzung auf. Sie sind bewusst dokumentiert, weil sie
-zeigen, wie die jeweilige Ursache gefunden und behoben wurde.
+Die folgenden Punkte traten während der Umsetzung auf. Sie sind bewusst dokumentiert, weil sie zeigen, wie die jeweilige Ursache gefunden und behoben wurde.
 
 | # | Problem | Ursache | Lösung |
 |---|---|---|---|
 | 1 | Kein SSH-Zugang nach der Installation | Der SSH-Server war bei der Paketauswahl nicht mit ausgewählt worden | `openssh-server` nachinstalliert, Dienst startet seitdem automatisch |
-| 2 | `ping: Temporary failure in name resolution` | Nur der Host-only-Adapter war konfiguriert, der NAT-Adapter und damit DNS und Standard-Gateway fehlten | Beide Adapter in `/etc/network/interfaces` eingetragen und die VM neu gestartet; vermutlich hatte zusätzlich die DHCP-Zuweisung nicht gegriffen **[TODO: eigene Beschreibung ergänzen]** |
+| 2 | `ping: Temporary failure in name resolution` | Nur der Host-only-Adapter war konfiguriert, der NAT-Adapter und damit DNS und Standard-Gateway fehlten | Beide Adapter in `/etc/network/interfaces` eingetragen und die VM neu gestartet; vermutlich hatte zusätzlich die DHCP-Zuweisung nicht gegriffen |
 | 3 | `apt` lehnte das Jenkins-Repository ab: „The repository is not signed“ | Jenkins hatte den Signaturschlüssel gewechselt; die gängigen Anleitungen nennen noch `jenkins.io-2023.key` | Aktuellen Schlüssel `jenkins.io-2026.key` geladen, Fingerprint mit der Fehlermeldung abgeglichen, Anleitung im Repository korrigiert |
 | 4 | SSH-Schlüsselpaar zunächst auf der VM erzeugt | Missverständnis: Der Schlüssel gehört auf den Client, nicht auf den Server | Schlüssel auf dem Windows-PC erzeugt, öffentlichen Teil in `authorized_keys` der VM übertragen |
 | 5 | Jenkins-Job hieß zunächst „Pipeline script from SCM“ | Die Bezeichnung der Definitionsart wurde als Jobname eingetragen | Job als `netwatch` neu angelegt und mit einer Beschreibung versehen |
@@ -727,25 +614,15 @@ zeigen, wie die jeweilige Ursache gefunden und behoben wurde.
 | 9 | Git verweigerte die Arbeit im Projektordner | Das Repository liegt auf einem Netzlaufwerk, dessen Besitzer Git nicht als vertrauenswürdig einstuft („dubious ownership“) | Den Pfad einmalig als `safe.directory` eingetragen |
 | 10 | Build #5 brach in der Stage *Lint* ab, die Build-Seite meldete trotzdem „1 fehlgeschlagener Test“ | Der Arbeitsbereich bleibt zwischen Builds bestehen. Da die Unit-Tests gar nicht liefen, wertete Jenkins am Ende den Testbericht des vorherigen Builds erneut aus | Der Ordner `test-results` wird jetzt direkt nach dem Checkout gelöscht |
 
-Problem 10 ist ein Nebenergebnis der eigenen Testreihe: Erst der absichtlich herbeigeführte
-Fehlschlag hat diese Schwäche der Pipeline sichtbar gemacht.
+Problem 10 ist ein Nebenergebnis der eigenen Testreihe: Erst der absichtlich herbeigeführte Fehlschlag hat diese Schwäche der Pipeline sichtbar gemacht.
 
 ---
 
 ## 13. Fazit
 
-Der Prototyp erfüllt alle geforderten Punkte. Eine Codeänderung erreicht ohne manuelles
-Zutun innerhalb von etwa drei Minuten das Testsystem: zwei Minuten Wartezeit durch das Polling
-und rund 40 Sekunden für Test und Bereitstellung. Fehlerhafte Versionen werden zuverlässig
-abgefangen, bevor sie ausgeliefert werden – nachgewiesen durch zwei absichtlich eingebaute
-Fehler. Die Monitoring-Daten überstehen Container-Neustarts, einen Datenbankausfall und den
-Neustart der gesamten virtuellen Maschine.
+Der Prototyp erfüllt alle geforderten Punkte. Eine Codeänderung erreicht ohne manuelles Zutun innerhalb von etwa drei Minuten das Testsystem: zwei Minuten Wartezeit durch das Polling und rund 40 Sekunden für Test und Bereitstellung. Fehlerhafte Versionen werden zuverlässig abgefangen, bevor sie ausgeliefert werden - nachgewiesen durch zwei absichtlich eingebaute Fehler. Die Monitoring-Daten überstehen Container-Neustarts, einen Datenbankausfall und den Neustart der gesamten virtuellen Maschine.
 
-Die eingangs beschriebenen Probleme der Abteilung sind damit adressiert: Tests können nicht
-mehr vergessen werden, weil sie Teil der Pipeline sind. Unterschiedliche Softwarestände sind
-ausgeschlossen, weil jede Version als Image mit Commit-Hash gebaut und bereitgestellt wird.
-Und fehlerhafte Versionen gelangen nicht auf das Testsystem, weil das Deployment erst nach
-bestandenen Tests erfolgt.
+Die eingangs beschriebenen Probleme der Abteilung sind damit adressiert: Tests können nicht mehr vergessen werden, weil sie Teil der Pipeline sind. Unterschiedliche Softwarestände sind ausgeschlossen, weil jede Version als Image mit Commit-Hash gebaut und bereitgestellt wird. Und fehlerhafte Versionen gelangen nicht auf das Testsystem, weil das Deployment erst nach bestandenen Tests erfolgt.
 
 ### Mögliche Erweiterungen
 
@@ -768,13 +645,13 @@ bestandenen Tests erfolgt.
 
 | Bewertungskriterium | Wo es in dieser Dokumentation steht |
 |---|---|
-| **Teil 1** – Planung der Gesamtumgebung inkl. VM, Netzwerk, GitHub, öffentliches Netz | Abschnitt 2: Vorgehen (2.1), Anforderungen (2.2), Netzplanung mit allen Verbindungen und dem öffentlichen Netz (2.3); VM-Daten in 5.1 |
-| **Teil 1** – Nachvollziehbare Darstellung der Projektziele | Abschnitt 1: sechs Ziele mit Messkriterium und Nachweis, dazu die ausdrückliche Abgrenzung, was nicht Ziel ist |
-| **Teil 1** – Zusammenspiel von GitHub, Jenkins, Docker, NetWatch und Datenbank | Abschnitt 3 (Architekturskizze, Komponenten) und Abschnitt 4 (Ablauf nach einem Commit in neun Schritten) |
-| **Teil 2** – VM, Netzwerk, Pakete/Dienste, Absicherung | Abschnitt 5, Unterabschnitte 5.1 bis 5.6 |
-| **Teil 3** – Repository, Git-Einsatz, Commits, `.gitignore` ohne Passwörter | Abschnitt 6, Unterabschnitte 6.1 bis 6.4 |
-| **Teil 4** – Bash-Anwendung, ONLINE/OFFLINE, Ausgabe, Struktur und Kommentare | Abschnitt 7, Unterabschnitte 7.1 bis 7.3 |
-| **Teil 5** – Datenbank, Tabellenstruktur, Speicherung, Volume, Zugangsdaten | Abschnitt 8, Unterabschnitte 8.1 bis 8.4 |
-| **Teil 6** – Dockerfile, eigener Container, getrennte Datenbank, Compose | Abschnitt 9, Unterabschnitte 9.1 und 9.2 |
-| **Teil 7** – Jenkins, Checkout, Jenkinsfile, Stages, Tests, Deploy, Trigger | Abschnitt 10, Unterabschnitte 10.1 bis 10.3 |
-| **Teil 8** – Testfälle, positive und negative Tests, Ergebnisse | Abschnitt 11, Unterabschnitte 11.1 bis 11.3 |
+| **Teil 1** - Planung der Gesamtumgebung inkl. VM, Netzwerk, GitHub, öffentliches Netz | Abschnitt 2: Vorgehen (2.1), Anforderungen (2.2), Netzplanung mit allen Verbindungen und dem öffentlichen Netz (2.3); VM-Daten in 5.1 |
+| **Teil 1** - Nachvollziehbare Darstellung der Projektziele | Abschnitt 1: sechs Ziele mit Messkriterium und Nachweis, dazu die ausdrückliche Abgrenzung, was nicht Ziel ist |
+| **Teil 1** - Zusammenspiel von GitHub, Jenkins, Docker, NetWatch und Datenbank | Abschnitt 3 (Architekturskizze, Komponenten) und Abschnitt 4 (Ablauf nach einem Commit in neun Schritten) |
+| **Teil 2** - VM, Netzwerk, Pakete/Dienste, Absicherung | Abschnitt 5, Unterabschnitte 5.1 bis 5.6 |
+| **Teil 3** - Repository, Git-Einsatz, Commits, `.gitignore` ohne Passwörter | Abschnitt 6, Unterabschnitte 6.1 bis 6.4 |
+| **Teil 4** - Bash-Anwendung, ONLINE/OFFLINE, Ausgabe, Struktur und Kommentare | Abschnitt 7, Unterabschnitte 7.1 bis 7.3 |
+| **Teil 5** - Datenbank, Tabellenstruktur, Speicherung, Volume, Zugangsdaten | Abschnitt 8, Unterabschnitte 8.1 bis 8.4 |
+| **Teil 6** - Dockerfile, eigener Container, getrennte Datenbank, Compose | Abschnitt 9, Unterabschnitte 9.1 und 9.2 |
+| **Teil 7** - Jenkins, Checkout, Jenkinsfile, Stages, Tests, Deploy, Trigger | Abschnitt 10, Unterabschnitte 10.1 bis 10.3 |
+| **Teil 8** - Testfälle, positive und negative Tests, Ergebnisse | Abschnitt 11, Unterabschnitte 11.1 bis 11.3 |
