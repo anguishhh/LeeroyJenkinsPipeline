@@ -607,14 +607,20 @@ dadurch unabhängig von der jeweiligen Netzumgebung immer aussagekräftig.
 |---|---|---|---|---|
 | P1 | Commit löst Build aus | Start ohne Zutun innerhalb von 2 Minuten, Deploy der neuen Version | Push 12:19, Build #3 um 12:22, „durch eine SCM-Änderung ausgelöst“, danach läuft `netwatch:3` und überwacht den neuen Host | ✓ |
 | P2 | fehlerhafter Code wird gestoppt | Abbruch in den Unit-Tests, kein Deploy | Build #4 nach 8,6 s rot, Test „check_host meldet ONLINE …“ fehlgeschlagen, kein Image `netwatch:4`, alte Version lief ununterbrochen weiter | ✓ |
-| P3 | Stilfehler wird gestoppt | Abbruch, kein Deploy | Build #5 nach 8,7 s rot, kein Deploy **[TODO: Stage aus der Konsolenausgabe ergänzen]** | ✓ |
+| P3 | Stilfehler wird gestoppt | Abbruch in der Stage *Lint*, kein Deploy | Build #5 rot in *Lint* nach 1 Sekunde (`SC2086`, Rückgabewert 1); alle folgenden Stages übersprungen, kein Image gebaut | ✓ |
 | P4 | Korrektur per `git revert` | Pipeline wieder grün | Build #6, 37 s, alle Stages grün, Deploy von `netwatch:6` | ✓ |
 
 P2 ist der Kerntest des Auftrags: Eine fehlerhafte Version darf nicht bereitgestellt werden.
 Die Pipeline hat den Fehler nicht nur erkannt, sie hat ihn so früh erkannt, dass gar kein Image
 entstanden ist.
 
+P2 und P3 zeigen zusammen die Staffelung der Teststufen. Der Stilfehler aus P3 fiel bereits
+nach einer Sekunde in der statischen Analyse auf, noch bevor ein Test ausgeführt oder ein Image
+gebaut wurde. Der inhaltliche Fehler aus P2 kam erst in den Unit-Tests zum Vorschein. In beiden
+Fällen blieb die zuvor getestete Version unverändert in Betrieb.
+
 > **[Screenshot: Build #4 – rot, mit dem Namen des fehlgeschlagenen Tests]**
+> **[Screenshot: Build #5 – Stage-Ansicht mit rotem Lint, ShellCheck-Meldung SC2086 und übersprungenen Folgestages]**
 > **[Screenshot: Build-Dauer-Trend, der den Unterschied zwischen 8,6 s und 37 s zeigt]**
 > **[Screenshot: Build #6 – grün, mit beiden Revert-Commits]**
 
@@ -649,7 +655,7 @@ zeigen, wie die jeweilige Ursache gefunden und behoben wurde.
 | 7 | Jenkins konnte das Repository nicht klonen | Das Repository war zunächst privat | Repository veröffentlicht; alternativ wäre ein GitHub-Token mit Leserecht als Jenkins-Credential möglich gewesen |
 | 8 | `.gitignore` passte nicht zum Projekt | Bei der Erstellung auf GitHub war die Visual-Studio-Vorlage ausgewählt worden | Durch eine Fassung für dieses Projekt ersetzt (Zugangsdaten, Testergebnisse, Editor-Dateien) |
 | 9 | Git verweigerte die Arbeit im Projektordner | Das Repository liegt auf einem Netzlaufwerk, dessen Besitzer Git nicht als vertrauenswürdig einstuft („dubious ownership“) | Den Pfad einmalig als `safe.directory` eingetragen |
-| 10 | Jenkins zeigte bei Testfall P3 ein Testergebnis an, obwohl kein Test lief | Der Arbeitsbereich bleibt zwischen Builds bestehen; die Auswertung las den Bericht des vorherigen Builds erneut ein | Der Ordner `test-results` wird jetzt direkt nach dem Checkout gelöscht |
+| 10 | Build #5 brach in der Stage *Lint* ab, die Build-Seite meldete trotzdem „1 fehlgeschlagener Test“ | Der Arbeitsbereich bleibt zwischen Builds bestehen. Da die Unit-Tests gar nicht liefen, wertete Jenkins am Ende den Testbericht des vorherigen Builds erneut aus | Der Ordner `test-results` wird jetzt direkt nach dem Checkout gelöscht |
 
 Problem 10 ist ein Nebenergebnis der eigenen Testreihe: Erst der absichtlich herbeigeführte
 Fehlschlag hat diese Schwäche der Pipeline sichtbar gemacht.
