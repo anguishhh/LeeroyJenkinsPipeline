@@ -104,12 +104,11 @@ docker compose version
 
 ## 5. Jenkins
 
-Java und Jenkins aus dem offiziellen Jenkins-Repository. Die Schlüssel-URL wird gelegentlich
-erneuert – vorher mit <https://www.jenkins.io/doc/book/installing/linux/#debianubuntu> abgleichen.
+Java und Jenkins aus dem offiziellen Jenkins-Repository.
 
 ```bash
 sudo apt install -y fontconfig openjdk-21-jre
-sudo wget -O /etc/apt/keyrings/jenkins-keyring.asc https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+sudo wget -O /etc/apt/keyrings/jenkins-keyring.asc https://pkg.jenkins.io/debian-stable/jenkins.io-2026.key
 echo "deb [signed-by=/etc/apt/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/" \
   | sudo tee /etc/apt/sources.list.d/jenkins.list
 sudo apt update
@@ -120,6 +119,14 @@ sudo usermod -aG docker jenkins
 sudo systemctl restart jenkins
 systemctl status jenkins
 ```
+
+> Der Name der Schlüsseldatei enthält das Jahr und wird von Jenkins gelegentlich erneuert.
+> Meldet `apt update` „The repository … is not signed“ und „Missing key <Fingerprint>“, dann
+> ist die Datei veraltet: aktuellen Namen unter
+> <https://www.jenkins.io/doc/book/installing/linux/#debianubuntu> ablesen, erneut mit `wget`
+> nach `/etc/apt/keyrings/jenkins-keyring.asc` herunterladen und `sudo apt update` wiederholen.
+> Kontrolle: `gpg --show-keys --with-fingerprint /etc/apt/keyrings/jenkins-keyring.asc` muss
+> den in der Fehlermeldung genannten Fingerprint zeigen.
 
 Einrichtung im Browser unter `http://192.168.56.10:8080`:
 
