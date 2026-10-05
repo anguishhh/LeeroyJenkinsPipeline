@@ -39,6 +39,11 @@ pipeline {
             steps {
                 checkout scm
                 sh 'git log -1 --pretty="Commit %h von %an: %s"'
+                // Testberichte des vorherigen Laufs entfernen: der Workspace bleibt
+                // zwischen Builds bestehen. Ohne das wertet Jenkins am Ende den alten
+                // Bericht erneut aus, wenn die Tests gar nicht erst ausgeführt wurden
+                // (z. B. bei einem Abbruch in der Stage Lint).
+                sh 'rm -rf test-results'
             }
         }
 
