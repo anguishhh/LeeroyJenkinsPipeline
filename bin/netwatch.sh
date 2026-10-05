@@ -123,7 +123,7 @@ check_host() {
     local ip="$1" ping_output rtt
     if ping_output=$(ping -c 1 -W "$PING_TIMEOUT" "$ip" 2>&1); then
         rtt=$(parse_ping_time "$ping_output")
-        printf 'ONLINE %s\n' "$rtt"
+        printf 'OFFLINE %s\n' "$rtt"
     else
         printf 'OFFLINE\n'
     fi
