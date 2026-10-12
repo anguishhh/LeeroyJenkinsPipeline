@@ -1,7 +1,7 @@
 # Einrichtung der VM, Docker und Jenkins
 
-Schritt-für-Schritt-Anleitung. Alles, was mit **TODO** markiert ist, beim Einrichten mit den
-tatsächlichen Werten füllen – die Tabellen sind gleichzeitig die Dokumentation für das CMS.
+Schritt-für-Schritt-Anleitung für die Umgebung, wie sie in der
+[Projektdokumentation](cms-dokumentation.md) beschrieben ist.
 
 ## 1. Virtuelle Maschine (VirtualBox)
 
@@ -161,14 +161,14 @@ Jenkinsfile und aktiviert das Polling. Ob Polling läuft, zeigt der Job unter �
 > gestartet, entweder dieselben Daten im Credential verwenden oder vorher einmalig
 > `docker compose down -v` ausführen (löscht die Daten!).
 
-## 6. Übersicht für die Dokumentation
+## 6. Übersicht
 
 **Benutzer**
 
 | Benutzer | Zweck | Rechte |
 |----------|-------|--------|
 | root | – | Anmeldung gesperrt |
-| TODO (eigener Admin) | Administration per SSH | sudo, nur SSH-Schlüssel |
+| a | Administration per SSH | sudo, docker, nur SSH-Schlüssel |
 | jenkins | Dienstkonto von Jenkins | Gruppe `docker` |
 | netwatch (im Container) | führt das Skript aus | keine Root-Rechte |
 

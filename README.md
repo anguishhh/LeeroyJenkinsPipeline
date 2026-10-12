@@ -1,7 +1,7 @@
 # NetWatch – CI/CD-Prototyp mit GitHub, Jenkins und Docker
 
-Prototyp der NetDorm Solutions GmbH: Die Monitoring-Anwendung **NetWatch** (Bash) prüft
-jede Minute per Ping, ob Server und Netzwerkgeräte erreichbar sind, und speichert die
+Die Monitoring-Anwendung **NetWatch** (Bash) prüft jede Minute per Ping, ob Server und
+Netzwerkgeräte erreichbar sind, und speichert die
 Ergebnisse in einer **PostgreSQL**-Datenbank. Jeder Push auf GitHub wird von **Jenkins**
 automatisch getestet und – nur wenn alle Tests bestanden sind – als neuer
 **Docker**-Container bereitgestellt.
@@ -41,7 +41,7 @@ flowchart LR
 | `tests/netwatch.bats` | Unit-Tests (bats) für die Funktionen des Skripts |
 | `tests/integration.sh` | Integrationstest mit echter Test-Datenbank |
 | `.env.example` | Vorlage für Zugangsdaten – die echte `.env` wird nie committed |
-| `docs/` | VM-Einrichtung und Testkonzept |
+| `docs/` | Projektdokumentation, VM-Einrichtung und Testkonzept |
 
 ## Datenmodell (ERM)
 
@@ -103,7 +103,7 @@ Da jede Stage die Pipeline bei einem Fehler abbricht, wird eine fehlerhafte Vers
 | Netzwerk | nur ausgehende Verbindungen nötig | Jenkins muss **aus dem Internet erreichbar** sein |
 | Sicherheit | kein offener Port | öffentlicher Endpunkt, Absicherung per Secret/HTTPS nötig |
 
-Die VM steht hinter dem VirtualBox-NAT im Schulnetz und ist aus dem Internet nicht erreichbar –
+Die VM steht hinter dem VirtualBox-NAT in einem lokalen Netz und ist aus dem Internet nicht erreichbar –
 ein GitHub-Webhook käme nie an. Deshalb nutzt die Pipeline **Polling** (`pollSCM('H/2 * * * *')`).
 Mögliche Erweiterung: Webhook über einen Weiterleitungsdienst wie smee.io, der nur eine
 ausgehende Verbindung braucht.
@@ -137,4 +137,4 @@ docker compose exec netwatch netwatch-report.sh
 
 Integrationstest manuell: `docker build -t netwatch:dev . && NETWATCH_TAG=dev bash tests/integration.sh`
 
-Weitere Dokumentation: [VM-Einrichtung](docs/vm-setup.md) · [Testkonzept](docs/testkonzept.md)
+Weitere Dokumentation: [Projektdokumentation](docs/cms-dokumentation.md) · [VM-Einrichtung](docs/vm-setup.md) · [Testkonzept](docs/testkonzept.md)

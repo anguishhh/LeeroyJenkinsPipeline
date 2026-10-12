@@ -1,27 +1,27 @@
 # NetWatch - CI/CD-Umgebung mit GitHub, Jenkins und Docker
-Projektdokumentation · NetDorm Solutions GmbH · Stand 05.10.2026
+Projektdokumentation · Stand 12.10.2026
 Repository: <https://github.com/anguishhh/LeeroyJenkinsPipeline> (öffentlich)
 
 ---
 
-## 1. Ausgangslage (Lernsituation) und Ziel
+## 1. Zielsetzung
 
-Die Entwicklungsabteilung verwaltet ihren Quellcode bereits mit GitHub, testet neue Versionen, aber von Hand und lässt sie anschließend von einem Administrator auf einem Linux-Server bereitstellen. Daraus entstehen immer wieder dieselben Probleme: Tests werden vergessen, auf verschiedenen Systemen laufen unterschiedliche Softwarestände, und fehlerhafte Versionen gelangen auf Testsysteme.
+Ziel des Projekts ist eine lauffähige CI/CD-Umgebung auf einer Linux-VM: Jede Änderung am Quellcode, die auf GitHub eingeht, wird von Jenkins automatisch getestet und nur bei fehlerfreiem Durchlauf als Docker-Container bereitgestellt. Test und Bereitstellung laufen ohne manuellen Eingriff auf dem Server.
 
-Ziel des Projekts ist ein lauffähiger Prototyp, der diesen Ablauf automatisiert. Als Demonstrationsanwendung dient **NetWatch**, ein Monitoring-Programm in Bash, das Server und Netzwerkgeräte im Minutentakt per Ping prüft und die Ergebnisse dauerhaft in einer Datenbank speichert. Nach jedem Commit auf GitHub soll NetWatch automatisch getestet und, bei fehlerfreiem Durchlauf, als Docker-Container bereitgestellt werden.
+Als Anwendung dient **NetWatch**, ein Monitoring-Programm in Bash. Es prüft Server und Netzwerkgeräte im Minutentakt per Ping, erkennt sie als ONLINE oder OFFLINE und speichert die Ergebnisse dauerhaft in einer PostgreSQL-Datenbank. Anwendung und Datenbank laufen in getrennten Containern.
 
-### Projektziele
+### 1.1 Projektziele
 
-Aus der Ausgangslage ergeben sich sechs Ziele:
+Das Gesamtziel ist in sechs Teilziele zerlegt. Zu jedem Ziel ist festgelegt, womit es umgesetzt wird, woran es gemessen wird und wo der Nachweis steht:
 
-| # | Ziel | Woran wir es messen | Erreicht |
-|---|---|---|---|
-| 1 | Jede Codeänderung wird automatisch getestet, ohne dass jemand daran denken muss | Ein Push löst ohne weiteres Zutun einen Testlauf aus | Testfall P1: Push 12:19, Build 12:22, von der Pipeline selbst gestartet |
-| 2 | Fehlerhafte Versionen erreichen kein Testsystem | Ein absichtlich eingebauter Fehler führt zum Abbruch vor der Bereitstellung | Testfälle P2 und P3: Abbruch nach 8,6 bzw. 1 Sekunde, kein Deployment |
-| 3 | Auf dem Zielsystem läuft ein eindeutig bestimmbarer Softwarestand | Jede Version trägt die Buildnummer und den Commit-Hash |  Image `netwatch:<Buildnummer>`, Version im Protokoll beim Start |
-| 4 | Die Bereitstellung erfolgt ohne Handarbeit auf dem Server | Nach bestandenen Tests läuft die neue Version ohne manuellen Eingriff | Stage *Deploy*, nachgewiesen in den Builds #3 und #6 |
-| 5 | Monitoring-Daten gehen nicht verloren | Daten überstehen Container- und Systemneustarts | Testfälle I10, B2 und B4: 462 → 477 Messungen über den VM-Neustart hinweg |
-| 6 | Zugangsdaten sind nirgends im Quellcode | Volltextsuche im Repository findet keine echten Passwörter | Testfall B5; das Produktivpasswort liegt nur im Credential-Speicher von Jenkins |
+| # | Ziel | Umsetzung | Messkriterium | Nachweis |
+|---|---|---|---|---|
+| 1 | Jede Codeänderung wird automatisch getestet | Jenkins fragt GitHub alle 2 Minuten nach neuen Commits; die Pipeline enthält drei Teststufen | Ein Push löst ohne weiteres Zutun einen Testlauf aus | Testfall P1: Push 12:19, Build 12:22, von der Pipeline selbst gestartet |
+| 2 | Fehlerhafte Versionen werden nicht bereitgestellt | Die Stage *Deploy* steht am Ende der Pipeline und wird nur nach bestandenen Tests erreicht | Ein absichtlich eingebauter Fehler führt zum Abbruch vor der Bereitstellung | Testfälle P2 und P3: Abbruch nach 8,6 bzw. 1 Sekunde, kein Deployment |
+| 3 | Der laufende Softwarestand ist eindeutig bestimmbar | Image-Tag mit Buildnummer, Commit-Hash als Version im Image | Jede Version trägt Buildnummer und Commit-Hash | Image `netwatch:<Buildnummer>`, Version im Protokoll beim Start |
+| 4 | Die Bereitstellung erfolgt ohne Handarbeit auf dem Server | `docker compose up` in der Stage *Deploy* | Nach bestandenen Tests läuft die neue Version ohne manuellen Eingriff | Stage *Deploy*, nachgewiesen in den Builds #3 und #6 |
+| 5 | Monitoring-Daten gehen nicht verloren | Datenbank in eigenem Container, Daten in einem benannten Docker-Volume | Daten überstehen Container- und Systemneustarts | Testfälle I10, B2 und B4: 462 → 477 Messungen über den VM-Neustart hinweg |
+| 6 | Zugangsdaten stehen nirgends im Quellcode | Jenkins-Credential, Umgebungsvariablen, `.gitignore` | Volltextsuche im Repository findet keine echten Passwörter | Testfall B5; das Produktivpasswort liegt nur im Credential-Speicher von Jenkins |
 
 ---
 
@@ -41,7 +41,7 @@ Die Umgebung wurde in fünf aufeinander aufbauenden Schritten geplant und umgese
 
 ### 2.2 Anforderungen und gewählte Lösungen
 
-| Anforderung aus dem Auftrag | Umsetzung im Projekt |
+| Technische Anforderung | Umsetzung im Projekt |
 |---|---|
 | Linux läuft als virtuelle Maschine | Debian 13 „trixie“ in Oracle VirtualBox |
 | Quellcode mit Git und GitHub verwaltet | öffentliches Repository `anguishhh/LeeroyJenkinsPipeline` |
@@ -54,9 +54,58 @@ Die Umgebung wurde in fünf aufeinander aufbauenden Schritten geplant und umgese
 | Deployment nur nach erfolgreichem Test | Stage *Deploy* wird nur bei grünen Vorstufen erreicht |
 | Keine Zugangsdaten im Quellcode oder Jenkinsfile | Jenkins-Credential, Umgebungsvariablen, `.gitignore` |
 
-### 2.3 Netzplanung: lokales Netz, Internet und GitHub
+### 2.3 Planung der virtuellen Maschine
 
-Die Umgebung besteht aus vier Zonen. Geplant wurde so, dass aus dem öffentlichen Netz keine Verbindung in die Umgebung hinein möglich ist; nach außen geht nur, was gebraucht wird.
+Alle Dienste laufen auf einer einzigen VM. Sie muss Jenkins, die Image-Builds und bis zu vier Container gleichzeitig tragen: Während des Integrationstests laufen Test-Datenbank und Test-Instanz von NetWatch neben der produktiven Umgebung.
+
+| Parameter | Planung | Begründung |
+|---|---|---|
+| Hypervisor | Oracle VirtualBox | läuft auf dem Windows-PC, stellt NAT- und Host-only-Netze ohne Zusatzsoftware bereit |
+| Betriebssystem | Debian 13 „trixie“, ohne grafische Oberfläche | stabile Server-Distribution; dieselbe Basis wie das Image der Anwendung (`debian:trixie-slim`) |
+| Arbeitsspeicher | 8 GB | Jenkins empfiehlt für kleine Teams mindestens 4 GB; dazu kommen PostgreSQL, Docker-Builds und die Testcontainer |
+| Prozessorkerne | 6 | Image-Build und Tests laufen neben dem laufenden Monitoring |
+| Festplatte | 50 GB, dynamisch wachsend | entspricht der Jenkins-Empfehlung; Platz für Images, die letzten 20 Builds und das Datenbank-Volume |
+| Netzwerk | zwei Adapter: NAT und Host-only | trennt Internetzugang und Verwaltung, siehe 2.4 |
+
+Die Einrichtung der VM ist in Abschnitt 5 beschrieben.
+
+### 2.4 Netzplanung: lokales Netz, öffentliches Netz und GitHub
+
+Die Umgebung besteht aus vier Netzzonen. Geplant wurde so, dass aus dem öffentlichen Netz keine Verbindung in die Umgebung hinein möglich ist; nach außen geht nur, was gebraucht wird.
+
+| Zone | Adressbereich | Beteiligte Systeme | Erreichbarkeit |
+|---|---|---|---|
+| Öffentliches Netz (Internet) | öffentliche Adressen | GitHub, Docker Hub, Paketquellen von Debian, Docker und Jenkins, öffentliche Zielsysteme wie 1.1.1.1 | wird von der VM nur ausgehend angesprochen |
+| NAT-Netz von VirtualBox | 10.0.2.0/24 | VM (`enp0s3`, 10.0.2.15), virtuelles Gateway 10.0.2.2 | Weg der VM ins Internet; von außen nicht ansprechbar |
+| Host-only-Netz | 192.168.56.0/24 | Windows-PC, VM (`enp0s8`, 192.168.56.10) | nur zwischen PC und VM; einziger Zugang zu SSH und Jenkins |
+| Docker-Netz `netwatch_backend` | von Docker vergeben, aus 172.16.0.0/12 | Container `netwatch` und `db` | nur innerhalb der VM |
+
+```
+  ÖFFENTLICHES NETZ (Internet)
+  GitHub · Docker Hub · Paketquellen · 1.1.1.1 (überwachtes System)
+            ▲
+            │  nur ausgehend: HTTPS 443/tcp, HTTP 80/tcp, ICMP
+            │  keine Verbindung aus dem Internet in die Umgebung
+  lokales Netz mit Router · keine Portweiterleitung zur VM
+            ▲
+┌───────────┼────────────────────── Windows-PC ────────────────────────┐
+│           │                                                          │
+│   VirtualBox-NAT 10.0.2.0/24        Host-only-Netz 192.168.56.0/24   │
+│   Gateway 10.0.2.2                  Browser und SSH-Client des PCs   │
+│           ▲                               │ SSH 22, HTTP 8080        │
+│           │                               ▼                          │
+│  ┌────────┼─────── VM netwatch-vm ────────┼───────────────────────┐  │
+│  │  enp0s3 10.0.2.15 (NAT)            enp0s8 192.168.56.10        │  │
+│  │  Debian 13 · Firewall ufw · Jenkins · Docker                   │  │
+│  │                                                                │  │
+│  │  ┌─ Docker-Netz netwatch_backend ───────────────────────────┐  │  │
+│  │  │  netwatch ── SQL 5432/tcp ──▶ db ── Volume pgdata        │  │  │
+│  │  └──────────────────────────────────────────────────────────┘  │  │
+│  └────────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+Über diese Zonen laufen genau die folgenden Verbindungen:
 
 | Verbindung | Richtung | Protokoll / Port | Zweck |
 |---|---|---|---|
@@ -79,9 +128,9 @@ Daraus ergeben sich drei Planungsentscheidungen:
 - **Datenbank ohne Netzzugang von außen:** Sie veröffentlicht keinen Port auf der VM, ist also
   selbst aus dem Host-only-Netz nicht erreichbar.
 
-Weil das Repository öffentlich ist, gilt für den Quellcode: Alles darin ist für jeden lesbar. Zugangsdaten dürfen deshalb unter keinen Umständen hineingeraten - die Maßnahmen dazu stehen in den Abschnitten 6.4 und 8.4.
+### 2.5 Begründete Entscheidungen
 
-### 2.4 Begründete Entscheidungen
+**Öffentliches GitHub-Repository:** Jenkins klont das Repository ohne Zugangsdaten. Auf der VM liegt damit kein GitHub-Token, das abhandenkommen oder ablaufen könnte. Im Gegenzug ist alles im Repository für jeden lesbar; Zugangsdaten dürfen deshalb unter keinen Umständen hineingeraten - die Maßnahmen dazu stehen in den Abschnitten 6.4 und 8.4. Bei einem privaten Repository wäre ein GitHub-Token mit reinem Leserecht als Jenkins-Credential nötig.
 
 **Jenkins direkt auf der VM statt als Container:** Die Pipeline startet selbst Container (`docker build`, `docker compose`). Läuft Jenkins direkt auf dem System, nutzt es dafür einfach den vorhandenen Docker-Dienst. Als Container bräuchte Jenkins zusätzlich die Docker-CLI im Image und entweder den eingebundenen Docker-Socket oder „Docker in Docker“ in einem privilegierten Container. Außerdem stimmen so die Pfade: Die Pipeline bindet ihr Arbeitsverzeichnis in Testcontainer ein (`-v "$WORKSPACE:/code"`), was bei einem containerisierten Jenkins zu Pfadkonflikten zwischen Host und Container führt. Jenkins läuft als systemd-Dienst und startet nach einem Neustart der VM automatisch mit. Nachteil: Java und Jenkins liegen direkt auf dem System, Updates sind aufwändiger als ein Image-Austausch. Die nötige Mitgliedschaft des Benutzers `jenkins` in der Gruppe `docker` entspricht faktisch Root-Rechten - das gilt beim eingebundenen Docker-Socket allerdings genauso und ist daher kein Argument für die Container-Variante.
 
@@ -95,7 +144,7 @@ Weil das Repository öffentlich ist, gilt für den Quellcode: Alles darin ist f�
 | Netzwerk | nur ausgehende Verbindungen nötig | Jenkins muss aus dem Internet erreichbar sein |
 | Sicherheit | kein offener Port nach außen | öffentlicher Endpunkt, Absicherung per Secret und HTTPS nötig |
 
-Die VM steht hinter dem NAT von VirtualBox in einem Schulnetz und besitzt keine öffentliche Adresse. Ein Webhook von GitHub könnte sie nicht erreichen. Gewählt wurde deshalb Polling mit `pollSCM('H/2 * * * *')`. In einer Umgebung mit erreichbarem Server wäre der Webhook vorzuziehen, weil er schneller reagiert und keine Leerlauf-Abfragen erzeugt. Als Mittelweg ließe sich ein Weiterleitungsdienst wie smee.io einsetzen, der nur eine ausgehende Verbindung benötigt.
+Die VM steht hinter dem NAT von VirtualBox und dem Router des lokalen Netzes und besitzt keine öffentliche Adresse; eine Portweiterleitung bis zur VM gibt es nicht. Ein Webhook von GitHub könnte sie nicht erreichen. Gewählt wurde deshalb Polling mit `pollSCM('H/2 * * * *')`. In einer Umgebung mit erreichbarem Server wäre der Webhook vorzuziehen, weil er schneller reagiert und keine Leerlauf-Abfragen erzeugt. Als Mittelweg ließe sich ein Weiterleitungsdienst wie smee.io einsetzen, der nur eine ausgehende Verbindung benötigt.
 
 **PostgreSQL als Datenbank:** Die Datentypen `inet` für IP-Adressen und `timestamptz` für Zeitstempel mit Zeitzone passen unmittelbar zu den Monitoring-Daten, und `inet` prüft die Gültigkeit einer Adresse bereits auf Datenbankebene. Entscheidend war außerdem, dass das Kommandozeilenwerkzeug `psql` Werte als Variablen übergeben bekommen kann (`:'name'`) und selbst korrekt maskiert. Ein Bash-Skript hat keine Datenbankbibliothek mit vorbereiteten Anweisungen; über diesen Weg ist der Zugriff trotzdem gegen SQL-Injection abgesichert.
 
@@ -144,14 +193,31 @@ Die beiden Container liegen in einem eigenen Docker-Netz (`netwatch_backend`). D
 | PostgreSQL | 17 (Image `postgres:17`) | speichert die Monitoring-Ergebnisse |
 | NetWatch | eigenes Image auf `debian:trixie-slim` | die Monitoring-Anwendung selbst |
 
+### Schnittstellen zwischen den Komponenten
+
+Die Komponenten sind nur über klar festgelegte Schnittstellen miteinander verbunden:
+
+| Von → Nach | Schnittstelle | Was übertragen wird |
+|---|---|---|
+| Entwicklungsrechner → GitHub | `git push` über HTTPS | Commits mit Quellcode, Dockerfile, Compose-Datei und Jenkinsfile |
+| Jenkins → GitHub | Polling und `git clone` über HTTPS | Abfrage auf neue Commits, Quellcode für den Build |
+| Jenkins → Docker | Docker-CLI über den Docker-Socket (Gruppe `docker`) | `docker run` für ShellCheck und bats, `docker build`, `docker compose up` |
+| Jenkins → Docker Compose | Umgebungsvariablen aus dem Credential `netwatch-db` | Benutzername und Passwort der Datenbank, nur in der Stage *Deploy* |
+| Docker → NetWatch und Datenbank | Image, Container, Netz `netwatch_backend`, Volume `pgdata` | Laufzeitumgebung beider Komponenten |
+| NetWatch → überwachte Systeme | ICMP Echo Request (`ping`) | Erreichbarkeitsprüfung, Antwortzeit |
+| NetWatch → Datenbank | `psql` über TCP 5432 im Docker-Netz, Dienstname `db` | Hostname, IP-Adresse, Zeitpunkt, Status und Antwortzeit jeder Prüfung |
+| Datenbank → Volume | Verzeichnis `/var/lib/postgresql/data` | dauerhafte Speicherung aller Daten |
+
+Jenkins steuert damit den gesamten Ablauf, hält aber selbst keine Anwendungsdaten. GitHub ist die einzige Quelle für Code und Pipeline-Definition, Docker die einzige Laufzeitumgebung für Anwendung und Datenbank.
+
 ---
 
 ## 4. Zusammenspiel der Komponenten
 
 Der folgende Ablauf beschreibt, was nach einer Codeänderung passiert. Er wurde als Testfall P1 nachgewiesen.
 
-1. **Commit und Push:** Die Entwicklerin ändert den Quellcode und überträgt den Commit nach
-   GitHub. Beispiel aus dem Test: Commit `2e1c752`, gepusht um 12:19 Uhr.
+1. **Commit und Push:** Eine Änderung am Quellcode wird committet und nach GitHub
+   übertragen. Beispiel aus dem Test: Commit `2e1c752`, gepusht um 12:19 Uhr.
 2. **Erkennung:** Jenkins fragt alle zwei Minuten bei GitHub nach neuen Commits. Um 12:22 Uhr
    stellt es die Änderung fest und startet Build #3. Auf der Build-Seite steht als Auslöser
    „Build wurde durch eine SCM-Änderung ausgelöst“ - der Build wurde also nicht von Hand
@@ -230,7 +296,7 @@ Im Container läuft die Anwendung dagegen als unprivilegierter Benutzer `netwatc
 
 ### 5.4 Installierte Pakete
 
-Installiert wurde nur, was für den Auftrag gebraucht wird:
+Installiert wurde nur, was für das Projekt gebraucht wird:
 
 | Paket | Version | Wofür |
 |---|---|---|
@@ -569,7 +635,7 @@ Als Negativtest dient die Adresse 192.0.2.1. Sie stammt aus dem laut RFC 5737 f�
 | P3 | Stilfehler wird gestoppt | Abbruch in der Stage *Lint*, kein Deploy | Build #5 rot in *Lint* nach 1 Sekunde (`SC2086`, Rückgabewert 1); alle folgenden Stages übersprungen, kein Image gebaut | ✓ |
 | P4 | Korrektur per `git revert` | Pipeline wieder grün | Build #6, 37 s, alle Stages grün, Deploy von `netwatch:6` | ✓ |
 
-P2 ist der Kerntest des Auftrags: Eine fehlerhafte Version darf nicht bereitgestellt werden. Die Pipeline hat den Fehler nicht nur erkannt, sie hat ihn so früh erkannt, dass gar kein Image entstanden ist.
+P2 ist der zentrale Nachweis für Projektziel 2: Eine fehlerhafte Version darf nicht bereitgestellt werden. Die Pipeline hat den Fehler nicht nur erkannt, sie hat ihn so früh erkannt, dass gar kein Image entstanden ist.
 
 P2 und P3 zeigen zusammen die Staffelung der Teststufen. Der Stilfehler aus P3 fiel bereits nach einer Sekunde in der statischen Analyse auf, noch bevor ein Test ausgeführt oder ein Image gebaut wurde. Der inhaltliche Fehler aus P2 kam erst in den Unit-Tests zum Vorschein. In beiden Fällen blieb die zuvor getestete Version unverändert in Betrieb.
 
@@ -620,9 +686,9 @@ Problem 10 ist ein Nebenergebnis der eigenen Testreihe: Erst der absichtlich her
 
 ## 13. Fazit
 
-Der Prototyp erfüllt alle geforderten Punkte. Eine Codeänderung erreicht ohne manuelles Zutun innerhalb von etwa drei Minuten das Testsystem: zwei Minuten Wartezeit durch das Polling und rund 40 Sekunden für Test und Bereitstellung. Fehlerhafte Versionen werden zuverlässig abgefangen, bevor sie ausgeliefert werden - nachgewiesen durch zwei absichtlich eingebaute Fehler. Die Monitoring-Daten überstehen Container-Neustarts, einen Datenbankausfall und den Neustart der gesamten virtuellen Maschine.
+Alle sechs Projektziele aus Abschnitt 1 sind erreicht und durch Tests belegt. Eine Codeänderung ist ohne manuelles Zutun nach etwa drei Minuten in Betrieb: höchstens zwei Minuten Wartezeit durch das Polling und rund 40 Sekunden für Test und Bereitstellung. Fehlerhafte Versionen werden zuverlässig abgefangen, bevor sie ausgeliefert werden - nachgewiesen durch zwei absichtlich eingebaute Fehler. Die Monitoring-Daten überstehen Container-Neustarts, einen Datenbankausfall und den Neustart der gesamten virtuellen Maschine.
 
-Die eingangs beschriebenen Probleme der Abteilung sind damit adressiert: Tests können nicht mehr vergessen werden, weil sie Teil der Pipeline sind. Unterschiedliche Softwarestände sind ausgeschlossen, weil jede Version als Image mit Commit-Hash gebaut und bereitgestellt wird. Und fehlerhafte Versionen gelangen nicht auf das Testsystem, weil das Deployment erst nach bestandenen Tests erfolgt.
+Die Tests sind fester Bestandteil der Pipeline und laufen bei jedem Commit (Ziel 1). Das Deployment erfolgt erst nach bestandenen Tests und ohne Handarbeit (Ziele 2 und 4). Jede Version wird als Image mit Buildnummer und Commit-Hash gebaut, sodass der laufende Softwarestand jederzeit eindeutig ist (Ziel 3).
 
 ### Mögliche Erweiterungen
 
@@ -645,9 +711,9 @@ Die eingangs beschriebenen Probleme der Abteilung sind damit adressiert: Tests k
 
 | Bewertungskriterium | Wo es in dieser Dokumentation steht |
 |---|---|
-| **Teil 1** - Planung der Gesamtumgebung inkl. VM, Netzwerk, GitHub, öffentliches Netz | Abschnitt 2: Vorgehen (2.1), Anforderungen (2.2), Netzplanung mit allen Verbindungen und dem öffentlichen Netz (2.3); VM-Daten in 5.1 |
-| **Teil 1** - Nachvollziehbare Darstellung der Projektziele | Abschnitt 1: sechs Ziele mit Messkriterium und Nachweis, dazu die ausdrückliche Abgrenzung, was nicht Ziel ist |
-| **Teil 1** - Zusammenspiel von GitHub, Jenkins, Docker, NetWatch und Datenbank | Abschnitt 3 (Architekturskizze, Komponenten) und Abschnitt 4 (Ablauf nach einem Commit in neun Schritten) |
+| **Teil 1** - Planung der Gesamtumgebung inkl. VM, Netzwerk, GitHub, öffentliches Netz | Abschnitt 2: Vorgehen (2.1), Anforderungen (2.2), Planung der VM (2.3), Netzzonen mit Netzdiagramm und allen Verbindungen ins öffentliche Netz (2.4), Entscheidungen zu GitHub, Jenkins, Trigger und Datenbank (2.5) |
+| **Teil 1** - Nachvollziehbare Darstellung der Projektziele | Abschnitt 1: technisches Gesamtziel und sechs Teilziele mit Umsetzung, Messkriterium und Nachweis (1.1); Abgleich im Fazit (13) |
+| **Teil 1** - Zusammenspiel von GitHub, Jenkins, Docker, NetWatch und Datenbank | Abschnitt 3 (Architekturskizze, Komponenten, Schnittstellen) und Abschnitt 4 (Ablauf nach einem Commit in neun Schritten) |
 | **Teil 2** - VM, Netzwerk, Pakete/Dienste, Absicherung | Abschnitt 5, Unterabschnitte 5.1 bis 5.6 |
 | **Teil 3** - Repository, Git-Einsatz, Commits, `.gitignore` ohne Passwörter | Abschnitt 6, Unterabschnitte 6.1 bis 6.4 |
 | **Teil 4** - Bash-Anwendung, ONLINE/OFFLINE, Ausgabe, Struktur und Kommentare | Abschnitt 7, Unterabschnitte 7.1 bis 7.3 |

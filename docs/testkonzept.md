@@ -13,8 +13,9 @@ dauerhaft speichert und dass die Pipeline fehlerhafte Versionen zuverlässig sto
 | Pipeline-Tests (P) | Commit/Push, Jenkins-Oberfläche | einmalig, manuell | nein |
 | Betriebstests (B) | Docker/VM-Befehle | einmalig, manuell | nein |
 
-Für jeden durchgeführten Test das **Ist-Ergebnis** eintragen und als Nachweis einen
-Screenshot (Jenkins-Konsole, `psql`-Ausgabe, …) im CMS ablegen.
+Zu jedem durchgeführten Test ist das **Ist-Ergebnis** eingetragen. Screenshots als Nachweis
+(Jenkins-Oberfläche, Konsolenausgaben) liegen in `docs/screenshots/` und sind in der
+[Projektdokumentation](cms-dokumentation.md) den jeweiligen Abschnitten zugeordnet.
 
 ## Automatisierte Tests
 
