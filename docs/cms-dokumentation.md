@@ -547,6 +547,8 @@ Damit liegt die gesamte Pipeline-Definition im Repository und nicht in der Jenki
 
 > Screenshot7
 
+> Screenshot7b
+
 ### 10.2 Aufbau der Pipeline
 
 | Stage | Inhalt | Dauer (Build #6) |
