@@ -394,9 +394,67 @@ Nachweis (Testfall B5): Eine Volltextsuche im gesamten Repository findet ausschl
 
 ## 7. Die Anwendung NetWatch
 
-### 7.1 Funktionsweise
+### 7.1 Überblick
 
-NetWatch liest eine Liste zu überwachender Systeme, prüft jedes davon per ICMP-Ping und speichert für jede Prüfung Hostname, IP-Adresse, Prüfzeitpunkt, Status und Antwortzeit. Danach wartet es bis zum nächsten Intervall, standardmäßig eine Minute.
+NetWatch ist ein Bash-Skript, das dauerhaft im Container `netwatch` läuft. Es beantwortet für jedes eingetragene System im Minutentakt zwei Fragen: Ist das System gerade erreichbar, und wie schnell antwortet es? Jedes Ergebnis wird sofort im Protokoll ausgegeben und in der Datenbank gespeichert, sodass auch der Verlauf später abrufbar ist.
+
+| Baustein | Inhalt |
+|---|---|
+| Eingabe | Hostliste `config/hosts.conf` und Einstellungen über Umgebungsvariablen |
+| Verarbeitung | ein ICMP-Ping je System, Bewertung als ONLINE oder OFFLINE, Antwortzeit in Millisekunden |
+| Ausgabe | eine Tabellenzeile je Prüfung im Protokoll des Containers |
+| Speicherung | Hostname, IP-Adresse, Prüfzeitpunkt, Status und Antwortzeit in PostgreSQL |
+| Auswertung | Konsolenanwendung `netwatch-report.sh` |
+
+NetWatch kennt zwei Betriebsarten: den Dauerbetrieb im Container und mit der Option `--once` einen einzelnen Prüfdurchlauf, den der Integrationstest der Pipeline verwendet.
+
+### 7.2 Ablauf
+
+```
+Start im Container
+    │  Einstellungen prüfen: Intervall, Timeout, Verbindungsversuche
+    ▼
+Auf die Datenbank warten   (max. 30 Versuche à 2 s, sonst Abbruch)
+    │
+    ▼
+Schema anlegen             (nur was noch fehlt: Tabellen, Index, View)
+    │
+    ▼
+┌─▶ Hostliste einlesen      (ungültige Zeilen werden übersprungen)
+│       │
+│       ▼
+│   für jedes System:  Zeitpunkt merken → ping → ONLINE oder OFFLINE
+│                      → Zeile ausgeben → in der Datenbank speichern
+│       │
+│       ▼
+│   Restzeit bis zum nächsten Intervall warten (Standard: 60 s)
+│       │
+└───────┘
+```
+
+1. **Start:** NetWatch prüft zuerst seine Einstellungen. Ein ungültiger Wert, etwa ein Intervall von 0, führt sofort zum Abbruch mit einer klaren Meldung.
+2. **Datenbank:** Anwendung und Datenbank starten gemeinsam. NetWatch wartet deshalb, bis die Datenbank Verbindungen annimmt und die Zugangsdaten stimmen. Gelingt das nicht, beendet sich das Skript mit Fehler, und Docker startet den Container automatisch neu.
+3. **Schema:** NetWatch legt Tabellen, Index und View an, sofern sie noch nicht existieren. Eine neue Datenbank braucht dadurch keine manuelle Vorbereitung, vorhandene Daten bleiben unverändert.
+4. **Prüfdurchlauf:** Die Hostliste wird bei jedem Durchlauf neu gelesen. Für jedes System hält NetWatch den Zeitpunkt fest, sendet einen Ping, gibt das Ergebnis aus und speichert es.
+5. **Warten:** Gewartet wird nur die Restzeit bis zum nächsten Intervall, die Dauer der Pings wird also abgezogen. So bleibt der Takt bei einer Minute (Testfall B1).
+6. **Beenden:** `docker stop` sendet das Signal SIGTERM. NetWatch beendet sich daraufhin sofort und geordnet, auch mitten in der Wartezeit.
+
+Fällt die Datenbank im laufenden Betrieb aus, meldet NetWatch für jedes System einen Speicherfehler, prüft aber weiter und speichert wieder, sobald die Datenbank zurück ist (Testfall B3).
+
+### 7.3 Erkennung von ONLINE und OFFLINE
+
+Für jedes System sendet NetWatch genau ein Ping-Paket und wartet höchstens zwei Sekunden auf die Antwort (`ping -c 1 -W 2`). Entscheidend ist der Rückgabewert von `ping`:
+
+| Ergebnis von `ping` | Status | Antwortzeit |
+|---|---|---|
+| Antwort innerhalb des Timeouts, Rückgabewert 0 | ONLINE | aus der Ausgabe gelesen, z. B. `time=0.040 ms` → 0.040 |
+| keine Antwort, Ziel nicht erreichbar oder Timeout, Rückgabewert ungleich 0 | OFFLINE | keine (in der Datenbank NULL) |
+
+Ein System im Status OFFLINE ist für NetWatch kein Programmfehler, sondern ein gültiges Messergebnis. Als Fehler gelten nur eine fehlende oder leere Hostliste und Ergebnisse, die nicht gespeichert werden konnten.
+
+Bewusste Vereinfachung: Geht ein einzelnes Paket verloren, gilt das System für diese eine Minute als OFFLINE. Die nächste Prüfung bewertet es neu; im Verlauf ist ein solcher Ausreißer als einzelner Eintrag erkennbar.
+
+### 7.4 Konfiguration
 
 Die Hostliste `config/hosts.conf` ist bewusst einfach aufgebaut, damit sie ohne Spezialwissen gepflegt werden kann:
 
@@ -409,7 +467,20 @@ netwatch-vm      192.168.56.10
 fileserver01     192.168.10.25
 ```
 
-### 7.2 Aufbau des Skripts
+Jede Zeile wird beim Einlesen geprüft: der Hostname nach den Regeln für DNS-Namen, die IPv4-Adresse auf vier Oktette von 0 bis 255. Ungültige Zeilen werden mit Warnung und Zeilennummer übersprungen; Kommentare, Leerzeilen und Windows-Zeilenenden stören nicht. Die Hostliste ist Teil des Images. Ein neues System wird deshalb wie jede andere Änderung über Git eingetragen und von der Pipeline getestet und ausgeliefert (Testfall P1).
+
+Alle übrigen Einstellungen kommen aus Umgebungsvariablen, die Docker Compose setzt. Im Skript selbst stehen weder Adressen noch Zugangsdaten:
+
+| Variable | Standard | Bedeutung |
+|---|---|---|
+| `NETWATCH_INTERVAL` | 60 | Sekunden zwischen zwei Prüfdurchläufen |
+| `NETWATCH_PING_TIMEOUT` | 2 | maximale Wartezeit pro Ping in Sekunden |
+| `NETWATCH_DB_RETRIES` | 30 | Verbindungsversuche zur Datenbank beim Start |
+| `NETWATCH_HOSTS_FILE` | `/app/config/hosts.conf` | Pfad der Hostliste |
+| `NETWATCH_SCHEMA_FILE` | `/app/sql/schema.sql` | Pfad des Datenbankschemas |
+| `PGHOST`, `PGDATABASE`, `PGUSER`, `PGPASSWORD` | von Compose gesetzt | Verbindung zur Datenbank (Standardvariablen von `psql`) |
+
+### 7.5 Aufbau des Skripts
 
 Das Skript ist in kleine, einzeln prüfbare Funktionen gegliedert. Genau diese Gliederung macht die Unit-Tests möglich:
 
@@ -429,17 +500,15 @@ Weitere Eigenschaften:
 - **Trennung von Daten und Meldungen:** Ergebnisse gehen auf die Standardausgabe, Meldungen
   der Stufen INFO, WARN und ERROR auf die Fehlerausgabe. Dadurch können Ergebnisse
   weiterverarbeitet werden, ohne dass Meldungen sie verfälschen.
-- **Sauberes Beenden:** Auf das Signal SIGTERM, das `docker stop` sendet, beendet sich das
-  Skript geordnet, statt abgebrochen zu werden.
-- **Gleichmäßiger Takt:** Gewartet wird nur die verbleibende Zeit bis zur nächsten Minute, die
-  Dauer der Prüfungen wird also abgezogen. Nachgewiesen in Testfall B1.
-- **Fehlertoleranz:** Ein nicht erreichbarer Host ist kein Fehler, sondern das gültige Ergebnis
-  OFFLINE. Fällt dagegen die Datenbank aus, meldet das Skript den Fehler, läuft aber weiter
-  (Testfall B3).
+- **Testbarkeit:** Wird das Skript per `source` eingebunden, startet es nicht, sondern stellt
+  nur seine Funktionen bereit. Die Unit-Tests rufen so jede Funktion einzeln auf und ersetzen
+  den Ping durch eine Testfunktion.
+- **Schutz vor SQL-Injection:** Die Werte gehen als `psql`-Variablen in die Abfrage, `psql`
+  maskiert sie selbst. Ein manipulierter Eintrag in der Hostliste kann kein SQL ausführen.
 - **Ausführlich kommentiert** in deutscher Sprache, mit Kopfkommentar zu Aufruf, Konfiguration
   und Rückgabewerten.
 
-### 7.3 Ausgabe
+### 7.6 Ausgabe
 
 Im laufenden Betrieb schreibt NetWatch jede Prüfung in sein Protokoll:
 
@@ -465,18 +534,31 @@ docker exec netwatch-netwatch-1 netwatch-report.sh 10
 Das Modell trennt die überwachten Systeme von den einzelnen Messungen. Ein System hat viele Prüfergebnisse (1:n):
 
 ```
-┌──────────────────────┐             ┌────────────────────────────────┐
-│ hosts                │             │ checks                         │
-├──────────────────────┤             ├────────────────────────────────┤
-│ host_id      PK      │1           n│ check_id          PK           │
-│ hostname     UNIQUE  │─────────────│ host_id           FK → hosts   │
-│ ip_address   inet    │             │ checked_at        timestamptz  │
-└──────────────────────┘             │ status            ONLINE/OFFLINE│
-                                     │ response_time_ms  numeric, NULL │
-                                     └────────────────────────────────┘
+┌────────────────────────────┐      ┌──────────────────────────────────┐
+│ hosts                      │      │ checks                           │
+├────────────────────────────┤      ├──────────────────────────────────┤
+│ PK host_id    integer      │1    n│ PK check_id         bigint       │
+│    hostname   varchar(253) │──────│ FK host_id          integer      │
+│    ip_address inet         │      │    checked_at       timestamptz  │
+└────────────────────────────┘      │    status           varchar(7)   │
+                                    │    response_time_ms numeric(8,3) │
+                                    └──────────────────────────────────┘
 ```
 
 Ohne diese Trennung stünde der Hostname in jeder einzelnen Messung erneut - bei einer Prüfung pro Minute und Host wären das schnell Zehntausende redundante Einträge.
+
+Die Datentypen sind auf die Werte abgestimmt, die NetWatch tatsächlich liefert:
+
+| Spalte | Datentyp | Begründung |
+|---|---|---|
+| `hosts.host_id` | `integer`, automatisch fortlaufend | Primärschlüssel; über zwei Milliarden mögliche Werte reichen für jede denkbare Zahl überwachter Systeme |
+| `hosts.hostname` | `varchar(253)` | 253 Zeichen sind die Höchstlänge eines DNS-Namens; das Skript prüft beim Einlesen dieselbe Grenze |
+| `hosts.ip_address` | `inet` | eigener Typ für IP-Adressen: lehnt ungültige Adressen ab und sortiert und vergleicht numerisch statt als Text |
+| `checks.check_id` | `bigint`, automatisch fortlaufend | die Messtabelle wächst stetig, je Host um rund 525.000 Zeilen im Jahr; `bigint` schließt einen Überlauf auch bei vielen Hosts aus |
+| `checks.host_id` | `integer` | Fremdschlüssel, derselbe Typ wie der referenzierte Schlüssel `hosts.host_id` |
+| `checks.checked_at` | `timestamptz` | Zeitpunkt mit Zeitzone; das Skript übergibt ihn mit UTC-Abstand (`+0200`), dadurch bleibt er auch bei der Zeitumstellung eindeutig |
+| `checks.status` | `varchar(7)` mit CHECK | nur `ONLINE` oder `OFFLINE` zulässig; in Abfragen direkt lesbar und bei Bedarf leicht um weitere Zustände erweiterbar |
+| `checks.response_time_ms` | `numeric(8,3)`, darf NULL sein | exakter Dezimalwert mit drei Nachkommastellen, so wie `ping` die Zeit ausgibt (z. B. `0.034`); Platz bis 99.999,999 ms, bei 2 s Timeout mehr als genug; NULL bei OFFLINE |
 
 ### 8.2 Qualitätssicherung in der Datenbank
 
@@ -716,7 +798,7 @@ Die Tests sind fester Bestandteil der Pipeline und laufen bei jedem Commit (Ziel
 | **Teil 1** - Zusammenspiel von GitHub, Jenkins, Docker, NetWatch und Datenbank | Abschnitt 3 (Architekturskizze, Komponenten, Schnittstellen) und Abschnitt 4 (Ablauf nach einem Commit in neun Schritten) |
 | **Teil 2** - VM, Netzwerk, Pakete/Dienste, Absicherung | Abschnitt 5, Unterabschnitte 5.1 bis 5.6 |
 | **Teil 3** - Repository, Git-Einsatz, Commits, `.gitignore` ohne Passwörter | Abschnitt 6, Unterabschnitte 6.1 bis 6.4 |
-| **Teil 4** - Bash-Anwendung, ONLINE/OFFLINE, Ausgabe, Struktur und Kommentare | Abschnitt 7, Unterabschnitte 7.1 bis 7.3 |
+| **Teil 4** - Bash-Anwendung, ONLINE/OFFLINE, Ausgabe, Struktur und Kommentare | Abschnitt 7, Unterabschnitte 7.1 bis 7.6 |
 | **Teil 5** - Datenbank, Tabellenstruktur, Speicherung, Volume, Zugangsdaten | Abschnitt 8, Unterabschnitte 8.1 bis 8.4 |
 | **Teil 6** - Dockerfile, eigener Container, getrennte Datenbank, Compose | Abschnitt 9, Unterabschnitte 9.1 und 9.2 |
 | **Teil 7** - Jenkins, Checkout, Jenkinsfile, Stages, Tests, Deploy, Trigger | Abschnitt 10, Unterabschnitte 10.1 bis 10.3 |
