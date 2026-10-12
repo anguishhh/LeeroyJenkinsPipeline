@@ -41,7 +41,7 @@ flowchart LR
 | `tests/netwatch.bats` | Unit-Tests (bats) für die Funktionen des Skripts |
 | `tests/integration.sh` | Integrationstest mit echter Test-Datenbank |
 | `.env.example` | Vorlage für Zugangsdaten – die echte `.env` wird nie committed |
-| `docs/` | Projektdokumentation, VM-Einrichtung und Testkonzept |
+| `docs/` | Projektdokumentation, VM-Einrichtung, Testkonzept, Diagramme (PNG) und Screenshots |
 
 ## Datenmodell (ERM)
 
@@ -50,15 +50,15 @@ erDiagram
     hosts ||--o{ checks : "wird geprüft in"
     hosts {
         integer host_id PK
-        varchar hostname UK
+        varchar(253) hostname UK
         inet ip_address
     }
     checks {
         bigint check_id PK
         integer host_id FK
         timestamptz checked_at
-        varchar status "ONLINE oder OFFLINE"
-        numeric response_time_ms "NULL bei OFFLINE"
+        varchar(7) status "ONLINE oder OFFLINE"
+        numeric(8,3) response_time_ms "NULL bei OFFLINE"
     }
 ```
 
@@ -137,4 +137,4 @@ docker compose exec netwatch netwatch-report.sh
 
 Integrationstest manuell: `docker build -t netwatch:dev . && NETWATCH_TAG=dev bash tests/integration.sh`
 
-Weitere Dokumentation: [Projektdokumentation](docs/cms-dokumentation.md) · [VM-Einrichtung](docs/vm-setup.md) · [Testkonzept](docs/testkonzept.md) · [Vorführung](docs/vorfuehrung.md)
+Weitere Dokumentation: [Projektdokumentation](docs/cms-dokumentation.md) · [VM-Einrichtung](docs/vm-setup.md) · [Testkonzept](docs/testkonzept.md)
