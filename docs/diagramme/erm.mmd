@@ -1,0 +1,14 @@
+erDiagram
+    hosts ||--o{ checks : "hat"
+    hosts {
+        integer host_id PK
+        varchar(253) hostname UK
+        inet ip_address
+    }
+    checks {
+        bigint check_id PK
+        integer host_id FK
+        timestamptz checked_at
+        varchar(7) status "ONLINE oder OFFLINE"
+        numeric(8,3) response_time_ms "NULL bei OFFLINE"
+    }

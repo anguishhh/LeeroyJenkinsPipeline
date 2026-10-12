@@ -1,0 +1,17 @@
+flowchart TB
+    DEV["Entwicklungsrechner"] -- "git push" --> GH[("GitHub-<br/>Repository")]
+    GH -- "Polling alle 2 min,<br/>git clone" --> J
+    subgraph VM["Debian-13-VM (VirtualBox)"]
+        J["Jenkins<br/>systemd-Dienst, Port 8080"]
+        P["Pipeline aus dem Jenkinsfile<br/>1. Lint<br/>2. Unit-Tests<br/>3. Image bauen<br/>4. Integrationstest<br/>5. Deploy"]
+        subgraph DN["Docker-Netz netwatch_backend"]
+            APP["Container netwatch<br/>Bash · ping · psql"]
+            DB[("Container db<br/>PostgreSQL 17")]
+        end
+        VOL[("Volume<br/>netwatch_pgdata")]
+    end
+    J --> P
+    P -- "docker build,<br/>docker compose up" --> APP
+    APP -- "SQL" --> DB
+    DB --- VOL
+    APP -- "ICMP-Ping" --> T["Überwachte Systeme<br/>127.0.0.1 · 1.1.1.1<br/>10.0.2.2 · 192.168.56.10<br/>192.168.10.25"]

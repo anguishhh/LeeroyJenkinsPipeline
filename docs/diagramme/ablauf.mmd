@@ -1,0 +1,14 @@
+flowchart TD
+    S(["Start im Container"]) --> C["Einstellungen prüfen<br/>Intervall, Timeout,<br/>Verbindungsversuche"]
+    C -- "ungültig" --> X1(["Abbruch,<br/>Exit-Code 2"])
+    C --> W["Auf die Datenbank<br/>warten, max. 30<br/>Versuche à 2 s"]
+    W -- "keine Verbindung" --> X2(["Abbruch, Exit-Code 1,<br/>Docker startet neu"])
+    W --> SC["Schema anlegen,<br/>nur was noch fehlt"]
+    SC --> H["Hostliste einlesen,<br/>ungültige Zeilen<br/>überspringen"]
+    H --> P["Nächstes System:<br/>Zeitpunkt merken,<br/>ping senden,<br/>ONLINE / OFFLINE"]
+    P --> O["Zeile ausgeben,<br/>in der Datenbank<br/>speichern"]
+    O --> R{"weitere<br/>Systeme?"}
+    R -- "ja" --> P
+    R -- "nein, Option --once" --> E(["Ende"])
+    R -- "nein, Dauerbetrieb" --> Z["Restzeit bis zum<br/>nächsten Intervall<br/>warten (60 s)"]
+    Z --> H

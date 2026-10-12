@@ -1,0 +1,30 @@
+flowchart BT
+    subgraph INET["Öffentliches Netz (Internet)"]
+        GH["GitHub"]
+        HUB["Docker Hub,<br/>Paketquellen"]
+        CF["1.1.1.1<br/>überwachtes System"]
+    end
+    R["Router des lokalen Netzes<br/>keine Portweiterleitung<br/>zur VM"]
+    subgraph PC["Windows-PC"]
+        BR["Browser, SSH-Client<br/>192.168.56.1"]
+        GW["VirtualBox-NAT<br/>Gateway 10.0.2.2"]
+        subgraph VM["VM netwatch-vm · Debian 13 · ufw"]
+            E8["enp0s8<br/>192.168.56.10<br/>Host-only"]
+            J["Jenkins :8080<br/>SSH :22"]
+            E3["enp0s3<br/>10.0.2.15<br/>NAT"]
+            subgraph DN["Docker-Netz netwatch_backend"]
+                DB[("Container db<br/>PostgreSQL 17")]
+                APP["Container<br/>netwatch"]
+            end
+        end
+    end
+    BR -- "SSH 22, HTTP 8080" --> E8
+    E8 --> J
+    J -- "git clone,<br/>Pakete" --> E3
+    APP -- "ICMP" --> E3
+    APP -- "SQL 5432" --> DB
+    E3 --> GW
+    GW --> R
+    R -- "HTTPS 443" --> GH
+    R -- "HTTPS 443,<br/>HTTP 80" --> HUB
+    R -- "ICMP" --> CF

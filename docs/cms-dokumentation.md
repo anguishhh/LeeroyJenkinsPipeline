@@ -78,40 +78,9 @@ Die Umgebung besteht aus vier Netzzonen. Geplant wurde so, dass aus dem öffentl
 | Öffentliches Netz (Internet) | öffentliche Adressen | GitHub, Docker Hub, Paketquellen von Debian, Docker und Jenkins, öffentliche Zielsysteme wie 1.1.1.1 | wird von der VM nur ausgehend angesprochen |
 | NAT-Netz von VirtualBox | 10.0.2.0/24 | VM (`enp0s3`, 10.0.2.15), virtuelles Gateway 10.0.2.2 | Weg der VM ins Internet; von außen nicht ansprechbar |
 | Host-only-Netz | 192.168.56.0/24 | Windows-PC (192.168.56.1), VM (`enp0s8`, 192.168.56.10) | nur zwischen PC und VM; einziger Zugang zu SSH und Jenkins |
-| Docker-Netz `netwatch_backend` | von Docker vergeben, aus 172.16.0.0/12 | Container `netwatch` und `db` | nur innerhalb der VM |
+| Docker-Netz `netwatch_backend` | 172.18.0.0/16, von Docker vergeben | Container `netwatch` und `db` | nur innerhalb der VM |
 
-```mermaid
-flowchart BT
-    subgraph INET["Öffentliches Netz (Internet)"]
-        GH["GitHub"]
-        HUB["Docker Hub,<br/>Paketquellen"]
-        CF["1.1.1.1<br/>überwachtes System"]
-    end
-    R["Router des lokalen Netzes<br/>keine Portweiterleitung<br/>zur VM"]
-    subgraph PC["Windows-PC"]
-        BR["Browser, SSH-Client<br/>192.168.56.1"]
-        GW["VirtualBox-NAT<br/>Gateway 10.0.2.2"]
-        subgraph VM["VM netwatch-vm · Debian 13 · ufw"]
-            E8["enp0s8<br/>192.168.56.10<br/>Host-only"]
-            J["Jenkins :8080<br/>SSH :22"]
-            E3["enp0s3<br/>10.0.2.15<br/>NAT"]
-            subgraph DN["Docker-Netz netwatch_backend"]
-                DB[("Container db<br/>PostgreSQL 17")]
-                APP["Container<br/>netwatch"]
-            end
-        end
-    end
-    BR -- "SSH 22, HTTP 8080" --> E8
-    E8 --> J
-    J -- "git clone,<br/>Pakete" --> E3
-    APP -- "ICMP" --> E3
-    APP -- "SQL 5432" --> DB
-    E3 --> GW
-    GW --> R
-    R -- "HTTPS 443" --> GH
-    R -- "HTTPS 443,<br/>HTTP 80" --> HUB
-    R -- "ICMP" --> CF
-```
+<img src="diagramme/netz.png" alt="Netzplan: Netzzonen, Adressen und Verbindungen" width="600">
 
 Über diese Zonen laufen genau die folgenden Verbindungen:
 
@@ -156,25 +125,7 @@ Die VM steht hinter dem NAT von VirtualBox und dem Router des lokalen Netzes und
 
 ## 3. Architektur
 
-```mermaid
-flowchart TB
-    DEV["Entwicklungsrechner"] -- "git push" --> GH[("GitHub-<br/>Repository")]
-    GH -- "Polling alle 2 min,<br/>git clone" --> J
-    subgraph VM["Debian-13-VM (VirtualBox)"]
-        J["Jenkins<br/>systemd-Dienst, Port 8080"]
-        P["Pipeline aus dem Jenkinsfile<br/>1. Lint<br/>2. Unit-Tests<br/>3. Image bauen<br/>4. Integrationstest<br/>5. Deploy"]
-        subgraph DN["Docker-Netz netwatch_backend"]
-            APP["Container netwatch<br/>Bash · ping · psql"]
-            DB[("Container db<br/>PostgreSQL 17")]
-        end
-        VOL[("Volume<br/>netwatch_pgdata")]
-    end
-    J --> P
-    P -- "docker build,<br/>docker compose up" --> APP
-    APP -- "SQL" --> DB
-    DB --- VOL
-    APP -- "ICMP-Ping" --> T["Überwachte Systeme<br/>127.0.0.1 · 1.1.1.1<br/>10.0.2.2 · 192.168.56.10<br/>192.168.10.25"]
-```
+<img src="diagramme/architektur.png" alt="Architektur: GitHub, Jenkins, Docker, NetWatch und Datenbank" width="520">
 
 Die beiden Container liegen in einem eigenen Docker-Netz (`netwatch_backend`). Die Datenbank veröffentlicht bewusst keinen Port auf der VM: Sie ist ausschließlich für den NetWatch-Container erreichbar. Zugriffe zur Kontrolle erfolgen über `docker exec`.
 
@@ -237,14 +188,14 @@ Schlägt eine Stage fehl, bricht Jenkins sofort ab. Die Stage *Deploy* wird dann
 | Parameter | Wert |
 |---|---|
 | Virtualisierung | Oracle VirtualBox |
-| Betriebssystem | Debian 13.x „trixie“, 64 Bit, ohne grafische Oberfläche |
+| Betriebssystem | Debian 13.7 „trixie“, 64 Bit, Start ohne grafische Oberfläche |
 | Arbeitsspeicher | 8 GB |
 | Prozessorkerne | 6 |
 | Festplatte | 50 GB, dynamisch wachsend |
 | Hostname | `netwatch-vm` |
 | Zeitzone | Europe/Berlin |
 
-Installiert wurde nur das Nötigste: Standard-Systemwerkzeuge und der SSH-Server. Auf eine Desktop-Umgebung wurde verzichtet, weil ein Server sie nicht benötigt und sie unnötig Ressourcen und Angriffsfläche kostet.
+Geplant war eine Installation nur mit Standard-Systemwerkzeugen und SSH-Server, denn ein Server braucht keine Desktop-Umgebung, und sie kostet unnötig Ressourcen und Angriffsfläche. Bei der Installation blieb jedoch die vom Debian-Installer vorausgewählte Desktop-Umgebung GNOME aktiviert (Problem 11 in Abschnitt 12). Sie ist inzwischen abgeschaltet: Die VM startet ohne grafische Oberfläche, und die mitinstallierten Dienste für Druck (CUPS) und Netzwerkerkennung (avahi) sind deaktiviert. Die Pakete selbst sind noch vorhanden. Sie zu entfernen hätte auch NetworkManager betroffen, der den NAT-Adapter verwaltet.
 
 ### 5.2 Netzwerk
 
@@ -252,11 +203,12 @@ Die VM besitzt zwei Netzwerkkarten mit klar getrennten Aufgaben:
 
 | Schnittstelle | Typ | Adresse | Zweck |
 |---|---|---|---|
-| `enp0s3` | NAT | 10.0.2.15 (DHCP) | Internetzugang für Paketquellen, GitHub und Docker Hub |
+| `enp0s3` | NAT | 10.0.2.15/24 (DHCP über NetworkManager) | Internetzugang für Paketquellen, GitHub und Docker Hub |
 | `enp0s8` | Host-only | 192.168.56.10/24 (statisch) | Verwaltung vom Windows-PC: SSH und Jenkins-Oberfläche |
-| `docker0` und Compose-Netze | Bridge | 172.16.0.0/12 | interne Kommunikation der Container |
+| `docker0` | Bridge | 172.17.0.0/16 | Standardnetz von Docker, von NetWatch nicht genutzt |
+| `netwatch_backend` | Bridge | 172.18.0.0/16 | internes Netz der Container `netwatch` und `db` |
 
-Der Host-only-Adapter erhält eine feste Adresse, damit SSH-Zugang und Jenkins-URL dauerhaft gleich bleiben. Er bekommt bewusst **kein** Standard-Gateway: Der gesamte ausgehende Verkehr läuft über den NAT-Adapter. Die Konfiguration steht in `/etc/network/interfaces`:
+Der NAT-Adapter bezieht Adresse, DNS-Server und Standard-Gateway (10.0.2.2) per DHCP; das übernimmt NetworkManager. Der Host-only-Adapter erhält eine feste Adresse, damit SSH-Zugang und Jenkins-URL dauerhaft gleich bleiben. Er bekommt bewusst **kein** Standard-Gateway: Der gesamte ausgehende Verkehr läuft über den NAT-Adapter. Seine Konfiguration steht in `/etc/network/interfaces`, NetworkManager lässt ihn deshalb unverwaltet:
 
 ```
 auto enp0s8
@@ -280,7 +232,7 @@ Im Container läuft die Anwendung dagegen als unprivilegierter Benutzer `netwatc
 
 ### 5.4 Installierte Pakete
 
-Installiert wurde nur, was für das Projekt gebraucht wird:
+Für das Projekt wurden folgende Pakete installiert:
 
 | Paket | Version | Wofür |
 |---|---|---|
@@ -291,7 +243,7 @@ Installiert wurde nur, was für das Projekt gebraucht wird:
 | `unattended-upgrades` | Debian 13 | automatische Sicherheitsupdates |
 | `docker-ce`, `docker-ce-cli`, `containerd.io` | 29.8.2 / 2.3.6 | Container-Laufzeit |
 | `docker-buildx-plugin`, `docker-compose-plugin` | 0.37.1 / 5.6.0 | Images bauen, Dienste gemeinsam starten |
-| `fontconfig`, `openjdk-21-jre` | 21.0.12 | Laufzeitumgebung für Jenkins |
+| `fontconfig`, `openjdk-21-jre` | 21.0.12.1 | Laufzeitumgebung für Jenkins |
 | `jenkins` | 2.580.1 (LTS) | Automatisierungsserver |
 
 Docker und Jenkins stammen aus den offiziellen Herstellerquellen, die mit eigenem Signaturschlüssel eingebunden wurden. Das ist aktueller als die Debian-Pakete und war bei Jenkins auch nötig, weil die Distribution keine aktuelle LTS-Fassung mitbringt.
@@ -306,13 +258,15 @@ Docker und Jenkins stammen aus den offiziellen Herstellerquellen, die mit eigene
 | Container `db` (PostgreSQL) | 5432/tcp | nur im internen Docker-Netz |
 | Container `netwatch` | - | keine eingehenden Verbindungen |
 
+Außer SSH (22) und Jenkins (8080) wartet auf der VM kein weiterer TCP-Port auf Verbindungen (`ss -tln`). NetworkManager läuft als lokaler Dienst und verwaltet den NAT-Adapter.
+
 ### 5.6 Absicherung
 
 - **Firewall (ufw):** Standardregel „alles eingehende verbieten, alles ausgehende erlauben“. Freigegeben sind nur SSH und Jenkins, und zwar ausschließlich aus dem Host-only-Netz.
 - **Keine veröffentlichten Container-Ports:** Von Docker veröffentlichte Ports umgehen ufw. Deshalb veröffentlicht die Datenbank keinen Port; sie ist nur containerintern erreichbar.
 - **SSH nur mit Schlüssel:** Die Anmeldung erfolgt mit einem ed25519-Schlüsselpaar, das auf dem Windows-PC erzeugt wurde. Der private Schlüssel verlässt den PC nicht, auf der VM liegt nur der öffentliche Teil. Die Passwort-Anmeldung ist abgeschaltet (`PasswordAuthentication no`), ebenso die Anmeldung als `root`. Damit laufen Angriffe mit geratenen Passwörtern ins Leere.
 - **Automatische Sicherheitsupdates** über `unattended-upgrades`.
-- **Minimale Installation** ohne Desktop und ohne nicht benötigte Dienste.
+- **Keine unnötigen Dienste:** Die VM startet ohne grafische Oberfläche; die mitinstallierten Dienste gdm, CUPS und avahi sind abgeschaltet.
 
 > Screenshot2
 
@@ -390,22 +344,7 @@ NetWatch kennt zwei Betriebsarten: den Dauerbetrieb im Container und mit der Opt
 
 ### 7.2 Ablauf
 
-```mermaid
-flowchart TD
-    S(["Start im Container"]) --> C["Einstellungen prüfen<br/>Intervall, Timeout,<br/>Verbindungsversuche"]
-    C -- "ungültig" --> X1(["Abbruch,<br/>Exit-Code 2"])
-    C --> W["Auf die Datenbank<br/>warten, max. 30<br/>Versuche à 2 s"]
-    W -- "keine Verbindung" --> X2(["Abbruch, Exit-Code 1,<br/>Docker startet neu"])
-    W --> SC["Schema anlegen,<br/>nur was noch fehlt"]
-    SC --> H["Hostliste einlesen,<br/>ungültige Zeilen<br/>überspringen"]
-    H --> P["Nächstes System:<br/>Zeitpunkt merken,<br/>ping senden,<br/>ONLINE / OFFLINE"]
-    P --> O["Zeile ausgeben,<br/>in der Datenbank<br/>speichern"]
-    O --> R{"weitere<br/>Systeme?"}
-    R -- "ja" --> P
-    R -- "nein, Option --once" --> E(["Ende"])
-    R -- "nein, Dauerbetrieb" --> Z["Restzeit bis zum<br/>nächsten Intervall<br/>warten (60 s)"]
-    Z --> H
-```
+<img src="diagramme/ablauf.png" alt="Ablauf von NetWatch" width="480">
 
 1. **Start:** NetWatch prüft zuerst seine Einstellungen. Ein ungültiger Wert, etwa ein Intervall von 0, führt sofort zum Abbruch mit einer klaren Meldung.
 2. **Datenbank:** Anwendung und Datenbank starten gemeinsam. NetWatch wartet deshalb, bis die Datenbank Verbindungen annimmt und die Zugangsdaten stimmen. Gelingt das nicht, beendet sich das Skript mit Fehler, und Docker startet den Container automatisch neu.
@@ -504,22 +443,7 @@ Hinweis: Seit Commit `7d87d84` (gepusht am 05.10.2026 um 13:12 Uhr) rundet `netw
 
 Das Modell trennt die überwachten Systeme von den einzelnen Messungen. Ein System hat viele Prüfergebnisse (1:n):
 
-```mermaid
-erDiagram
-    hosts ||--o{ checks : "hat"
-    hosts {
-        integer host_id PK
-        varchar(253) hostname UK
-        inet ip_address
-    }
-    checks {
-        bigint check_id PK
-        integer host_id FK
-        timestamptz checked_at
-        varchar(7) status "ONLINE oder OFFLINE"
-        numeric(8,3) response_time_ms "NULL bei OFFLINE"
-    }
-```
+<img src="diagramme/erm.png" alt="ERM der Datenbank mit Datentypen" width="520">
 
 Ohne diese Trennung stünde der Hostname in jeder einzelnen Messung erneut - bei einer Prüfung pro Minute und Host wären das schnell Zehntausende redundante Einträge.
 
@@ -725,7 +649,7 @@ Die folgenden Punkte traten während der Umsetzung auf. Sie sind bewusst dokumen
 | # | Problem | Ursache | Lösung |
 |---|---|---|---|
 | 1 | Kein SSH-Zugang nach der Installation | Der SSH-Server war bei der Paketauswahl nicht mit ausgewählt worden | `openssh-server` nachinstalliert, Dienst startet seitdem automatisch |
-| 2 | `ping: Temporary failure in name resolution` | Nur der Host-only-Adapter war konfiguriert, der NAT-Adapter und damit DNS und Standard-Gateway fehlten | Beide Adapter in `/etc/network/interfaces` eingetragen und die VM neu gestartet; vermutlich hatte zusätzlich die DHCP-Zuweisung nicht gegriffen |
+| 2 | `ping: Temporary failure in name resolution` | Nur der Host-only-Adapter war konfiguriert, der NAT-Adapter und damit DNS und Standard-Gateway fehlten | Den Host-only-Adapter statisch in `/etc/network/interfaces` eingetragen und die VM neu gestartet; seitdem bezieht der NAT-Adapter Adresse, DNS und Standard-Gateway per DHCP über NetworkManager. Vermutlich hatte vorher die DHCP-Zuweisung nicht gegriffen |
 | 3 | `apt` lehnte das Jenkins-Repository ab: „The repository is not signed“ | Jenkins hatte den Signaturschlüssel gewechselt; die gängigen Anleitungen nennen noch `jenkins.io-2023.key` | Aktuellen Schlüssel `jenkins.io-2026.key` geladen, Fingerprint mit der Fehlermeldung abgeglichen, Anleitung im Repository korrigiert |
 | 4 | SSH-Schlüsselpaar zunächst auf der VM erzeugt | Missverständnis: Der Schlüssel gehört auf den Client, nicht auf den Server | Schlüssel auf dem Windows-PC erzeugt, öffentlichen Teil in `authorized_keys` der VM übertragen |
 | 5 | Jenkins-Job hieß zunächst „Pipeline script from SCM“ | Die Bezeichnung der Definitionsart wurde als Jobname eingetragen | Job als `netwatch` neu angelegt und mit einer Beschreibung versehen |
@@ -734,8 +658,9 @@ Die folgenden Punkte traten während der Umsetzung auf. Sie sind bewusst dokumen
 | 8 | `.gitignore` passte nicht zum Projekt | Bei der Erstellung auf GitHub war die Visual-Studio-Vorlage ausgewählt worden | Durch eine Fassung für dieses Projekt ersetzt (Zugangsdaten, Testergebnisse, Editor-Dateien) |
 | 9 | Git verweigerte die Arbeit im Projektordner | Das Repository liegt auf einem Netzlaufwerk, dessen Besitzer Git nicht als vertrauenswürdig einstuft („dubious ownership“) | Den Pfad einmalig als `safe.directory` eingetragen |
 | 10 | Build #5 brach in der Stage *Lint* ab, die Build-Seite meldete trotzdem „1 fehlgeschlagener Test“ | Der Arbeitsbereich bleibt zwischen Builds bestehen. Da die Unit-Tests gar nicht liefen, wertete Jenkins am Ende den Testbericht des vorherigen Builds erneut aus | Der Ordner `test-results` wird jetzt direkt nach dem Checkout gelöscht |
+| 11 | Beim Abgleich der Dokumentation mit dem laufenden System zeigte sich, dass die VM mit grafischer Oberfläche (GNOME) startete und zusätzlich die Dienste CUPS (Port 631, nur lokal) und avahi liefen | In der Softwareauswahl des Debian-Installers waren „Debian desktop environment“ und „GNOME“ vorausgewählt und wurden nicht abgewählt (vgl. Problem 1) | Start ohne Oberfläche eingestellt (`systemctl set-default multi-user.target`), gdm gestoppt, CUPS und avahi deaktiviert. Die Pakete blieben installiert, weil beim Entfernen auch NetworkManager weggefallen wäre, der den NAT-Adapter verwaltet |
 
-Problem 10 ist ein Nebenergebnis der eigenen Testreihe: Erst der absichtlich herbeigeführte Fehlschlag hat diese Schwäche der Pipeline sichtbar gemacht.
+Problem 10 ist ein Nebenergebnis der eigenen Testreihe: Erst der absichtlich herbeigeführte Fehlschlag hat diese Schwäche der Pipeline sichtbar gemacht. Problem 11 zeigt, warum sich der Abgleich von Dokumentation und tatsächlichem System lohnt.
 
 ---
 

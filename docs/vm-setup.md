@@ -15,6 +15,18 @@ Schritt-für-Schritt-Anleitung für die Umgebung, wie sie in der
 | Hostname | `netwatch-vm` |
 
 Installation: ohne Desktop-Umgebung, nur **SSH-Server** und **Standard-Systemwerkzeuge**.
+In der Softwareauswahl des Installers sind „Debian desktop environment“ und „GNOME“
+vorausgewählt – beide abwählen, „SSH server“ anwählen.
+
+Falls die Desktop-Umgebung doch mitinstalliert wurde, ohne Oberfläche starten und die
+nicht benötigten Dienste abschalten (die Pakete bleiben, weil NetworkManager den
+NAT-Adapter verwaltet):
+
+```bash
+sudo systemctl set-default multi-user.target
+sudo systemctl disable --now cups.service cups.socket cups.path cups-browsed.service avahi-daemon.service avahi-daemon.socket
+sudo systemctl stop gdm
+```
 Beim Root-Passwort **nichts eingeben** – dann ist das Root-Konto gesperrt und der
 angelegte Benutzer erhält `sudo`-Rechte.
 
@@ -40,7 +52,7 @@ Vom Windows-PC aus: `ping 192.168.56.10`, `ssh <benutzer>@192.168.56.10`
 
 | Schnittstelle | Typ | Adresse | Zweck |
 |---------------|-----|---------|-------|
-| enp0s3 | NAT | 10.0.2.15 (DHCP) | Internet |
+| enp0s3 | NAT | 10.0.2.15 (DHCP über NetworkManager) | Internet |
 | enp0s8 | Host-only | 192.168.56.10/24 (statisch) | Verwaltung vom PC |
 | docker0 / Compose-Netze | Bridge | 172.x.x.x | Container intern |
 
